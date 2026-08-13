@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">SoliMemo</string>
+    <string name="privacy_policy">プライバシーポリシー</string>
+    <string name="version_information">バージョン情報</string>
+    <string name="version_label">バージョン %1$s</string>
+    <string name="copyright">©︎デジホリ工房</string>
+    <string name="privacy_policy_url" translatable="false">https://github.com/digihori/SoliMemo/blob/main/PRIVACY.ja.md</string>
+</resources>

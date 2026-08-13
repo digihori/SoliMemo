@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.SoliMemo" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:statusBarColor">@color/solimemo_primary_dark</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
