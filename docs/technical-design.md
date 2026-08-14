@@ -9,7 +9,7 @@ SoliMemoを、Androidではオフライン利用可能なローカルファー�
 | 項目 | 採用内容 |
 | --- | --- |
 | アプリ名 | SoliMemo |
-| Android application ID | `tk.horiuchi.solimemo` |
+| Android application ID | `com.digihori.solimemo` |
 | 最小Android API | 23 |
 | UI | Jetpack Compose / Material 3 |
 | AndroidローカルDB | Room |
@@ -40,7 +40,7 @@ Repository
 ## パッケージ方針
 
 ```text
-tk.horiuchi.solimemo
+com.digihori.solimemo
 ├── data/local
 ├── data/remote
 ├── data/repository

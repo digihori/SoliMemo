@@ -1,0 +1,71 @@
+package com.digihori.solimemo.data.repository
+
+import kotlinx.coroutines.flow.Flow
+import com.digihori.solimemo.data.local.NoteDao
+import com.digihori.solimemo.data.local.NoteEntity
+import com.digihori.solimemo.data.local.SyncState
+import java.util.UUID
+
+class NoteRepository(
+    private val noteDao: NoteDao,
+    private val currentTimeMillis: () -> Long = System::currentTimeMillis,
+    private val newId: () -> String = { UUID.randomUUID().toString() },
+) {
+    fun observeNotes(query: String): Flow<List<NoteEntity>> = noteDao.observeSearch(query.trim())
+
+    fun observeNote(id: String): Flow<NoteEntity?> = noteDao.observeById(id)
+
+    suspend fun create(body: String): String? {
+        val normalizedBody = body.trim()
+        if (normalizedBody.isEmpty()) return null
+        val now = currentTimeMillis()
+        val id = newId()
+        noteDao.upsert(
+            NoteEntity(
+                id = id,
+                title = null,
+                body = normalizedBody,
+                createdAtEpochMillis = now,
+                updatedAtEpochMillis = now,
+                deletedAtEpochMillis = null,
+                syncState = SyncState.LOCAL_ONLY,
+                driveFileId = null,
+                driveVersion = null,
+                lastSyncError = null,
+            ),
+        )
+        return id
+    }
+
+    suspend fun update(id: String, title: String, body: String) {
+        val existing = noteDao.findById(id) ?: return
+        val normalizedTitle = title.trim().ifEmpty { null }
+        if (normalizedTitle == existing.title && body == existing.body) return
+        noteDao.upsert(
+            existing.copy(
+                title = normalizedTitle,
+                body = body,
+                updatedAtEpochMillis = currentTimeMillis(),
+                syncState = if (existing.driveFileId == null) {
+                    SyncState.LOCAL_ONLY
+                } else {
+                    SyncState.PENDING_UPLOAD
+                },
+                lastSyncError = null,
+            ),
+        )
+    }
+
+    suspend fun delete(id: String) {
+        val existing = noteDao.findById(id) ?: return
+        val now = currentTimeMillis()
+        noteDao.upsert(
+            existing.copy(
+                deletedAtEpochMillis = now,
+                updatedAtEpochMillis = now,
+                syncState = SyncState.PENDING_DELETE,
+                lastSyncError = null,
+            ),
+        )
+    }
+}

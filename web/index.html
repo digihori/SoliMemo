@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer-when-downgrade">
+  <meta name="theme-color" content="#3949ab">
+  <meta name="description" content="SoliMemoは、メモを自分の端末とGoogle Driveに保存する、自分専用のタイムライン型メモアプリです。">
+  <link rel="canonical" href="https://solimemo.digihori.com/">
+  <title>SoliMemo</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://accounts.google.com/gsi/client" async></script>
+  <script src="config.js"></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="app-bar">
+    <div class="bar-content">
+      <h1>SoliMemo</h1>
+      <div class="bar-actions">
+        <button id="sync" class="icon-button" disabled title="Driveから再読込" aria-label="Driveから再読込">↻</button>
+        <button id="open-settings" class="icon-button" title="接続設定" aria-label="接続設定">⋮</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="intro" aria-labelledby="intro-title">
+      <p class="eyebrow">自分専用のタイムライン型メモ</p>
+      <h2 id="intro-title">とりあえず書く。<br>必要になったら検索する。</h2>
+      <p>SoliMemoは、思いついたことを気軽に残し、覚えている言葉ですぐ探せるメモアプリです。メモは運営者のサーバーではなく、あなたの端末とGoogle Driveに保存されます。</p>
+      <ul class="feature-list">
+        <li>本文だけですぐ投稿</li>
+        <li>タイトル・本文を検索</li>
+        <li>AndroidとWebで同期</li>
+      </ul>
+    </section>
+
+    <section id="connection" class="card connection-card">
+      <div>
+        <strong id="auth-status">Google Drive未接続</strong>
+        <p>Android版と同じGoogleアカウントを選んでください。異なるアカウントを選ぶと、別のメモ領域が表示されます。</p>
+      </div>
+      <button id="authorize">Google Driveに接続</button>
+    </section>
+
+    <section class="card composer">
+      <label for="new-body">今、何を残しておく？</label>
+      <textarea id="new-body" rows="3" placeholder="本文を入力"></textarea>
+      <div class="composer-actions">
+        <span id="create-status" class="status" role="status"></span>
+        <button id="create" disabled>投稿</button>
+      </div>
+    </section>
+
+    <section class="search-area">
+      <label class="search-box">
+        <span>⌕</span>
+        <input id="search" type="search" placeholder="覚えている言葉で検索" disabled>
+      </label>
+      <p id="list-status" class="status">Google Driveに接続してください。</p>
+    </section>
+
+    <section id="timeline" class="timeline" aria-live="polite"></section>
+  </main>
+
+  <dialog id="editor">
+    <form method="dialog" class="dialog-card">
+      <div class="dialog-header">
+        <h2>メモを編集</h2>
+        <button value="cancel" class="icon-button dark" aria-label="閉じる">×</button>
+      </div>
+      <label for="edit-title">タイトル（任意）</label>
+      <input id="edit-title" type="text" maxlength="200">
+      <label for="edit-body">本文</label>
+      <textarea id="edit-body" rows="14"></textarea>
+      <p id="edit-status" class="status" role="status"></p>
+      <div class="dialog-actions">
+        <button id="delete" type="button" class="danger">削除</button>
+        <span class="spacer"></span>
+        <button value="cancel" class="secondary">キャンセル</button>
+        <button id="save" type="button">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="settings">
+    <form method="dialog" class="dialog-card compact">
+      <div class="dialog-header">
+        <h2>Google Drive接続設定</h2>
+        <button value="cancel" class="icon-button dark" aria-label="閉じる">×</button>
+      </div>
+      <div id="client-id-config">
+        <label for="client-id">Google OAuth Web Client ID</label>
+        <input id="client-id" type="text" autocomplete="off"
+               placeholder="1234567890-xxxxx.apps.googleusercontent.com">
+        <p class="hint">開発時のClient IDはこのブラウザ内だけに保存されます。本番版では公開用Client IDを使用します。</p>
+      </div>
+      <p class="hint">アクセストークンはブラウザのメモリにだけ保持し、デジホリ工房のサーバーへ送信・保存しません。</p>
+      <div class="dialog-actions">
+        <button id="revoke" type="button" class="danger" disabled>接続解除</button>
+        <span class="spacer"></span>
+        <button value="cancel" class="secondary">閉じる</button>
+      </div>
+      <details>
+        <summary>実行ログ</summary>
+        <pre id="log"></pre>
+      </details>
+    </form>
+  </dialog>
+
+  <footer class="site-footer">
+    <nav aria-label="法的情報">
+      <a href="privacy/">プライバシーポリシー</a>
+      <a href="terms/">利用規約</a>
+      <a href="https://github.com/digihori/SoliMemo">お問い合わせ</a>
+    </nav>
+    <p>提供：デジホリ工房</p>
+    <p>©︎デジホリ工房</p>
+  </footer>
+</body>
+</html>

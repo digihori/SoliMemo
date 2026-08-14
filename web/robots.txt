@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://solimemo.digihori.com/sitemap.xml

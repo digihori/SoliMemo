@@ -4,5 +4,11 @@
     <string name="version_information">バージョン情報</string>
     <string name="version_label">バージョン %1$s</string>
     <string name="copyright">©︎デジホリ工房</string>
-    <string name="privacy_policy_url" translatable="false">https://github.com/digihori/SoliMemo/blob/main/PRIVACY.ja.md</string>
+    <string name="phase1_title">Google Drive 接続テスト</string>
+    <string name="phase1_menu">Drive接続テスト（PoC）</string>
+    <string name="phase1_description">drive.file 権限で、専用フォルダとMarkdownファイルの作成・読込・更新を検証します。</string>
+    <string name="phase1_run">接続テストを実行</string>
+    <string name="phase1_reload">Driveから最新メモを再取得</string>
+    <string name="phase1_idle">まだテストを実行していません。</string>
+    <string name="privacy_policy_url" translatable="false">https://raw.githubusercontent.com/digihori/SoliMemo/main/PRIVACY.ja.md</string>
 </resources>
