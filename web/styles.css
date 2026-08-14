@@ -49,6 +49,7 @@ h1 { margin: 0; font-size: 1.35rem; }
 .connection-card p { margin: 4px 0 0; color: #5f6368; font-size: .9rem; }
 .connection-card.connected { border-color: #81c995; background: #f0fff4; }
 .composer { margin-top: 16px; }
+.composer label:not(:first-child) { margin-top: 14px; }
 label { display: block; font-weight: 650; margin-bottom: 8px; }
 input, textarea {
   width: 100%;

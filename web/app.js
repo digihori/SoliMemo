@@ -6,7 +6,7 @@ const MARKDOWN_MIME = "text/markdown";
 
 const elements = Object.fromEntries([
   "client-id", "client-id-config", "authorize", "revoke", "auth-status", "connection", "sync",
-  "open-settings", "settings", "log", "new-body", "create", "create-status",
+  "open-settings", "settings", "log", "new-title", "new-body", "create", "create-status",
   "search", "list-status", "timeline", "editor", "edit-title", "edit-body",
   "edit-status", "save", "delete",
 ].map((id) => [id.replaceAll("-", "_"), document.querySelector(`#${id}`)]));
@@ -40,9 +40,13 @@ function setStatus(element, message, type = "") {
 function setBusy(value) {
   busy = value;
   elements.sync.disabled = value || !accessToken;
-  elements.create.disabled = value || !accessToken || !elements.new_body.value.trim();
+  elements.create.disabled = value || !accessToken || !hasNewNoteContent();
   elements.save.disabled = value;
   elements.delete.disabled = value;
+}
+
+function hasNewNoteContent() {
+  return Boolean(elements.new_title.value.trim() || elements.new_body.value.trim());
 }
 
 function clearAccessToken(message = "Google Drive未接続") {
@@ -338,15 +342,17 @@ async function updateDriveFile(item, note) {
 }
 
 async function createNote() {
+  const title = elements.new_title.value.trim() || null;
   const body = elements.new_body.value.trim();
-  if (!body) return;
+  if (!title && !body) return;
   setBusy(true);
   setStatus(elements.create_status, "Driveへ保存しています…");
   try {
     const now = Date.now();
-    const note = { id: crypto.randomUUID(), title: null, body, createdAt: now, updatedAt: now, deletedAt: null };
+    const note = { id: crypto.randomUUID(), title, body, createdAt: now, updatedAt: now, deletedAt: null };
     const metadata = await createDriveFile(note);
     notes.push({ metadata, note });
+    elements.new_title.value = "";
     elements.new_body.value = "";
     renderTimeline();
     setStatus(elements.create_status, "投稿しました。", "success");
@@ -404,7 +410,11 @@ elements.authorize.addEventListener("click", authorize);
 elements.revoke.addEventListener("click", revoke);
 elements.sync.addEventListener("click", refreshNotes);
 elements.open_settings.addEventListener("click", () => elements.settings.showModal());
-elements.new_body.addEventListener("input", () => { elements.create.disabled = busy || !accessToken || !elements.new_body.value.trim(); });
+function updateCreateButton() {
+  elements.create.disabled = busy || !accessToken || !hasNewNoteContent();
+}
+elements.new_title.addEventListener("input", updateCreateButton);
+elements.new_body.addEventListener("input", updateCreateButton);
 elements.new_body.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") createNote();
 });
