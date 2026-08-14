@@ -27,20 +27,18 @@
   <main class="layout">
     <section class="intro" aria-labelledby="intro-title">
       <p class="eyebrow">SoliMemo</p>
-      <h2 id="intro-title">自分専用の<br>タイムライン型メモアプリ</h2>
-      <p>SoliMemoは、メモの作成・検索・編集・削除ができるAndroid・Web対応のメモアプリです。思いついたことを気軽に残し、覚えている言葉ですぐに探せます。</p>
-      <p class="oauth-purpose"><strong>Google Driveの利用目的：</strong>Google Drive連携を許可すると、SoliMemoは利用者自身のGoogle Driveへメモを保存・読込・更新し、Android版とWeb版の間で同期します。Google Drive連携は任意で、メモの内容をデジホリ工房が管理するサーバーへ保存することはありません。</p>
-      <ul class="feature-list">
-        <li>本文だけですぐ投稿</li>
-        <li>タイトル・本文を検索</li>
-        <li>AndroidとWebで同期</li>
-      </ul>
+      <h2 id="intro-title">自分専用のタイムライン型メモアプリ</h2>
+      <p>SoliMemoは、メモの作成・検索・編集・削除ができるAndroid・Web対応のメモアプリです。</p>
+      <details class="oauth-purpose">
+        <summary>Google Drive連携は任意です。メモを自分のDriveに保存・同期します。</summary>
+        <p>SoliMemoは、利用者自身のGoogle Driveへメモを保存・読込・更新し、Android版とWeb版の間で同期します。メモの内容をデジホリ工房が管理するサーバーへ保存することはありません。</p>
+      </details>
     </section>
 
     <section id="connection" class="card connection-card">
       <div>
         <strong id="auth-status">Google Drive未接続</strong>
-        <p>Android版と同じGoogleアカウントを選んでください。異なるアカウントを選ぶと、別のメモ領域が表示されます。</p>
+        <p>Android版と同じGoogleアカウントで接続してください。</p>
       </div>
       <button id="authorize">Google Driveに接続</button>
     </section>
