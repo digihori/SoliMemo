@@ -18,13 +18,22 @@ class NoteRepositoryTest {
 
     @Test
     fun createRejectsBlankAndCreatesLocalOnlyNote() = runBlocking {
-        assertNull(repository.create("  "))
+        assertNull(repository.create("  ", "  "))
 
-        assertEquals("fixed-id", repository.create(" hello "))
+        assertEquals("fixed-id", repository.create("", " hello "))
         val note = dao.findById("fixed-id")!!
         assertEquals("hello", note.body)
         assertEquals(SyncState.LOCAL_ONLY, note.syncState)
         assertEquals(1_000L, note.createdAtEpochMillis)
+    }
+
+    @Test
+    fun createAcceptsTitleWithoutBody() = runBlocking {
+        assertEquals("fixed-id", repository.create("  title  ", ""))
+
+        val note = dao.findById("fixed-id")!!
+        assertEquals("title", note.title)
+        assertEquals("", note.body)
     }
 
     @Test
