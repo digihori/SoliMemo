@@ -13,9 +13,14 @@ const elements = Object.fromEntries([
 
 let tokenClient;
 let accessToken;
+let accessTokenExpiresAt = 0;
+let accessTokenExpiryTimer;
+let pendingAction;
 let notes = [];
 let selected = null;
 let busy = false;
+
+class AuthorizationExpiredError extends Error {}
 
 const configuredClientId = window.SOLIMEMO_CONFIG?.googleClientId?.trim() || "";
 elements.client_id.value = configuredClientId || localStorage.getItem("solimemo.webClientId") || "";
@@ -40,15 +45,47 @@ function setBusy(value) {
   elements.delete.disabled = value;
 }
 
+function clearAccessToken(message = "Google Drive未接続") {
+  accessToken = undefined;
+  accessTokenExpiresAt = 0;
+  window.clearTimeout(accessTokenExpiryTimer);
+  elements.auth_status.textContent = message;
+  elements.connection.classList.remove("connected");
+  elements.revoke.disabled = true;
+  elements.sync.disabled = true;
+  elements.create.disabled = true;
+  elements.save.disabled = true;
+  elements.delete.disabled = true;
+}
+
+function expireAccessToken() {
+  if (!accessToken) return;
+  clearAccessToken("Google Drive再接続が必要");
+  setStatus(elements.list_status, "認証の有効期限が切れました。再接続してください。", "error");
+  log("認証の有効期限が切れました。表示中のメモは保持しています。");
+}
+
+function rememberPendingAction(action, statusElement) {
+  pendingAction = action;
+  expireAccessToken();
+  setStatus(statusElement, "再接続すると、この操作を続行します。", "error");
+}
+
 async function driveFetch(url, options = {}) {
-  if (!accessToken) throw new Error("Google Driveに接続してください。");
+  if (!accessToken || Date.now() >= accessTokenExpiresAt) {
+    expireAccessToken();
+    throw new AuthorizationExpiredError("Google Driveへ再接続してください。");
+  }
   const response = await fetch(url, {
     ...options,
     headers: { Authorization: `Bearer ${accessToken}`, ...(options.headers || {}) },
   });
   const body = await response.text();
   if (!response.ok) {
-    if (response.status === 401) throw new Error("認証の有効期限が切れました。再接続してください。");
+    if (response.status === 401) {
+      expireAccessToken();
+      throw new AuthorizationExpiredError("Google Driveへ再接続してください。");
+    }
     throw new Error(`Drive API HTTP ${response.status}: ${body.slice(0, 300)}`);
   }
   return body;
@@ -75,29 +112,41 @@ function authorize() {
         return;
       }
       accessToken = response.access_token;
+      const expiresInSeconds = Number(response.expires_in) || 3600;
+      accessTokenExpiresAt = Date.now() + expiresInSeconds * 1000;
+      window.clearTimeout(accessTokenExpiryTimer);
+      accessTokenExpiryTimer = window.setTimeout(
+        expireAccessToken,
+        Math.max(0, expiresInSeconds * 1000 - 30_000),
+      );
+      localStorage.setItem("solimemo.hasAuthorized", "true");
       elements.auth_status.textContent = "Google Drive接続済み";
       elements.connection.classList.add("connected");
       elements.revoke.disabled = false;
       elements.search.disabled = false;
       log("drive.file権限で認証しました。トークンはメモリにのみ保持します。");
-      await refreshNotes();
+      const action = pendingAction;
+      pendingAction = undefined;
+      if (action) await action();
+      else await refreshNotes();
     },
     error_callback: (error) => setStatus(elements.list_status, `認証画面エラー: ${error.type}`, "error"),
   });
-  tokenClient.requestAccessToken({ prompt: "consent select_account" });
+  const prompt = localStorage.getItem("solimemo.hasAuthorized") === "true"
+    ? ""
+    : "consent select_account";
+  tokenClient.requestAccessToken({ prompt });
 }
 
 function revoke() {
   if (!accessToken) return;
   google.accounts.oauth2.revoke(accessToken, () => {
-    accessToken = undefined;
+    clearAccessToken();
+    pendingAction = undefined;
+    localStorage.removeItem("solimemo.hasAuthorized");
     notes = [];
     renderTimeline();
-    elements.auth_status.textContent = "Google Drive未接続";
-    elements.connection.classList.remove("connected");
-    elements.revoke.disabled = true;
     elements.search.disabled = true;
-    elements.sync.disabled = true;
     setStatus(elements.list_status, "Google Driveとの接続を解除しました。");
     log("接続を解除しました。");
   });
@@ -179,6 +228,7 @@ async function refreshNotes() {
         const content = await driveFetch(`${DRIVE_FILES}/${metadata.id}?alt=media`);
         loaded.push({ metadata, note: parseMarkdown(content) });
       } catch (error) {
+        if (error instanceof AuthorizationExpiredError) throw error;
         errors += 1;
         log(`${metadata.name}を読めません: ${error.message}`);
       }
@@ -190,6 +240,10 @@ async function refreshNotes() {
       errors ? "error" : "success");
     log(`${files.length}ファイルを確認しました。`);
   } catch (error) {
+    if (error instanceof AuthorizationExpiredError) {
+      rememberPendingAction(refreshNotes, elements.list_status);
+      return;
+    }
     setStatus(elements.list_status, `読込失敗: ${error.message}`, "error");
     log(`一覧取得失敗: ${error.message}`);
   } finally {
@@ -298,6 +352,10 @@ async function createNote() {
     setStatus(elements.create_status, "投稿しました。", "success");
     log(`新規作成: ${metadata.name}`);
   } catch (error) {
+    if (error instanceof AuthorizationExpiredError) {
+      rememberPendingAction(createNote, elements.create_status);
+      return;
+    }
     setStatus(elements.create_status, `投稿失敗: ${error.message}`, "error");
   } finally {
     setBusy(false);
@@ -312,9 +370,9 @@ function openEditor(item) {
   elements.editor.showModal();
 }
 
-async function saveSelected(deleted = false) {
+async function saveSelected(deleted = false, deletionConfirmed = false) {
   if (!selected) return;
-  if (deleted && !window.confirm("このメモを削除しますか？")) return;
+  if (deleted && !deletionConfirmed && !window.confirm("このメモを削除しますか？")) return;
   const body = elements.edit_body.value;
   const title = elements.edit_title.value.trim() || null;
   if (!deleted && !title && !body.trim()) {
@@ -332,6 +390,10 @@ async function saveSelected(deleted = false) {
     elements.editor.close();
     log(`${deleted ? "論理削除" : "更新"}: ${note.id}`);
   } catch (error) {
+    if (error instanceof AuthorizationExpiredError) {
+      rememberPendingAction(() => saveSelected(deleted, deletionConfirmed || deleted), elements.edit_status);
+      return;
+    }
     setStatus(elements.edit_status, `保存失敗: ${error.message}`, "error");
   } finally {
     setBusy(false);
