@@ -34,8 +34,7 @@ h1 { margin: 0; font-size: 1.35rem; }
 .layout { width: min(720px, calc(100% - 24px)); margin: 12px auto 64px; }
 .intro { padding: 8px 4px 12px; }
 .intro h2 { color: #283593; font-size: clamp(1.45rem, 4vw, 2rem); line-height: 1.25; margin: 3px 0 8px; }
-.intro > p:not(.eyebrow) { line-height: 1.55; margin: 0; max-width: 650px; }
-.eyebrow { color: #3949ab; font-weight: 750; letter-spacing: .04em; margin: 0; }
+.intro > p { line-height: 1.55; margin: 0; max-width: 650px; }
 .oauth-purpose { color: #283593; font-size: .85rem; margin-top: 7px; }
 .oauth-purpose summary { cursor: pointer; font-weight: 650; }
 .oauth-purpose p { background: #e8eaf6; border-radius: 9px; line-height: 1.55; margin: 7px 0 0; padding: 10px 12px; }
