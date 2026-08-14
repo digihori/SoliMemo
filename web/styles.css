@@ -36,6 +36,7 @@ h1 { margin: 0; font-size: 1.35rem; }
 .intro h2 { color: #283593; font-size: clamp(1.8rem, 5vw, 2.7rem); line-height: 1.25; margin: 5px 0 14px; }
 .intro > p:not(.eyebrow) { line-height: 1.75; max-width: 650px; }
 .eyebrow { color: #3949ab; font-weight: 750; letter-spacing: .04em; margin: 0; }
+.oauth-purpose { background: #e8eaf6; border-radius: 12px; color: #283593; padding: 14px 16px; }
 .feature-list { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 18px 0 0; padding: 0; }
 .feature-list li { background: #e8eaf6; border-radius: 999px; color: #283593; font-size: .88rem; font-weight: 650; padding: 7px 12px; }
 .card {
