@@ -103,6 +103,19 @@ button.danger { background: #b3261e; }
 .note time { display: block; margin-top: 10px; color: #5f6368; font-size: .78rem; }
 .empty { text-align: center; color: #5f6368; padding: 48px 16px; }
 
+.app-details {
+  border-top: 1px solid #dfe1e5;
+  color: #5f6368;
+  font-size: .9rem;
+  line-height: 1.65;
+  margin-top: 48px;
+  padding: 24px 4px 0;
+}
+.app-details h2 { color: #283593; font-size: 1.2rem; margin: 0 0 8px; }
+.app-details h3 { color: #3c4043; font-size: 1rem; margin: 18px 0 5px; }
+.app-details p { margin: 0 0 8px; }
+.app-details a { color: #3949ab; }
+
 dialog { border: 0; border-radius: 16px; padding: 0; width: min(620px, calc(100% - 24px)); box-shadow: 0 18px 60px #0005; }
 dialog::backdrop { background: #20212488; }
 .dialog-card { padding: 22px; }
