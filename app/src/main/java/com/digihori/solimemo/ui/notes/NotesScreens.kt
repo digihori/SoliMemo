@@ -97,7 +97,7 @@ fun TimelineContent(
                             }
                         },
                         enabled = draftTitle.isNotBlank() || draftBody.isNotBlank(),
-                    ) { Text("残す") }
+                    ) { Text("投稿") }
                 }
                 OutlinedTextField(
                     value = query,
