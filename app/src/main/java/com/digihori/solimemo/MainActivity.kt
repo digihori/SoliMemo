@@ -69,6 +69,7 @@ private val SoliMemoPrimary = Color(0xFF3949AB)
 fun SoliMemoApp() {
     var screen by remember { mutableStateOf(Screen.HOME) }
     var selectedNoteId by remember { mutableStateOf<String?>(null) }
+    var syncStatus by remember { mutableStateOf<String?>(null) }
     val application = LocalContext.current.applicationContext as SoliMemoApplication
     val notesViewModel: NotesViewModel = viewModel(
         factory = NotesViewModel.Factory(application.noteRepository),
@@ -79,6 +80,8 @@ fun SoliMemoApp() {
             when (screen) {
                 Screen.HOME -> HomeScreen(
                     viewModel = notesViewModel,
+                    syncStatus = syncStatus,
+                    onSyncStatusChange = { syncStatus = it },
                     onOpenNote = { noteId ->
                         selectedNoteId = noteId
                         screen = Screen.NOTE_EDITOR
@@ -121,6 +124,8 @@ fun SoliMemoApp() {
 @Composable
 private fun HomeScreen(
     viewModel: NotesViewModel,
+    syncStatus: String?,
+    onSyncStatusChange: (String) -> Unit,
     onOpenNote: (String) -> Unit,
     onNavigate: (Screen) -> Unit,
 ) {
@@ -137,7 +142,7 @@ private fun HomeScreen(
                 ),
                 actions = {
                     val application = LocalContext.current.applicationContext as SoliMemoApplication
-                    DriveSyncAction(application)
+                    DriveSyncAction(application, onSyncStatusChange)
                     Box {
                         IconButton(onClick = { menuExpanded = true }) {
                             Text("⋮", style = MaterialTheme.typography.headlineSmall)
@@ -175,6 +180,7 @@ private fun HomeScreen(
     ) { contentPadding ->
         TimelineContent(
             viewModel = viewModel,
+            syncStatus = syncStatus,
             onOpenNote = onOpenNote,
             modifier = Modifier.padding(contentPadding),
         )

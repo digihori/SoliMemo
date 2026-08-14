@@ -4,9 +4,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -43,60 +45,86 @@ private val Primary = Color(0xFF3949AB)
 @Composable
 fun TimelineContent(
     viewModel: NotesViewModel,
+    syncStatus: String?,
     onOpenNote: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val notes by viewModel.notes.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
-    var draft by remember { mutableStateOf("") }
+    var draftTitle by remember { mutableStateOf("") }
+    var draftBody by remember { mutableStateOf("") }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("今、何を残しておく？") },
-                minLines = 2,
-                maxLines = 5,
-            )
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Button(
-                    onClick = { viewModel.createNote(draft) { draft = "" } },
-                    enabled = draft.isNotBlank(),
-                ) { Text("残す") }
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .imePadding(),
+        contentPadding = PaddingValues(bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item(key = "composer") {
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                syncStatus?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                OutlinedTextField(
+                    value = draftTitle,
+                    onValueChange = { draftTitle = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("タイトル（任意）") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = draftBody,
+                    onValueChange = { draftBody = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("メモの入力") },
+                    minLines = 2,
+                    maxLines = 5,
+                )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Button(
+                        onClick = {
+                            viewModel.createNote(draftTitle, draftBody) {
+                                draftTitle = ""
+                                draftBody = ""
+                            }
+                        },
+                        enabled = draftTitle.isNotBlank() || draftBody.isNotBlank(),
+                    ) { Text("残す") }
+                }
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = viewModel::setQuery,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("メモを検索") },
+                    singleLine = true,
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.setQuery("") }) { Text("×") }
+                        }
+                    },
+                )
             }
-            OutlinedTextField(
-                value = query,
-                onValueChange = viewModel::setQuery,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("メモを検索") },
-                singleLine = true,
-                trailingIcon = {
-                    if (query.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.setQuery("") }) { Text("×") }
-                    }
-                },
-            )
         }
 
         if (notes.isEmpty()) {
-            Text(
-                text = if (query.isBlank()) "まだメモがありません。" else "一致するメモがありません。",
-                modifier = Modifier.padding(24.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            item(key = "empty") {
+                Text(
+                    text = if (query.isBlank()) "まだメモがありません。" else "一致するメモがありません。",
+                    modifier = Modifier.padding(24.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(notes, key = NoteEntity::id) { note ->
-                    NoteCard(note = note, onClick = { onOpenNote(note.id) })
-                }
+            items(notes, key = NoteEntity::id) { note ->
+                NoteCard(note = note, onClick = { onOpenNote(note.id) })
             }
         }
     }

@@ -5,56 +5,75 @@ import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.debounce
 import com.digihori.solimemo.SoliMemoApplication
 
 private const val DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 
+@OptIn(FlowPreview::class)
 @Composable
-fun DriveSyncAction(application: SoliMemoApplication) {
+fun DriveSyncAction(
+    application: SoliMemoApplication,
+    onStatusChange: (String) -> Unit,
+) {
     val activity = checkNotNull(LocalActivity.current)
     val client = remember(activity) { Identity.getAuthorizationClient(activity) }
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     var running by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf<String?>(null) }
+    var autoSyncPending by remember { mutableStateOf(false) }
 
     fun synchronize(result: AuthorizationResult) {
         val token = result.accessToken
         if (token.isNullOrBlank()) {
             running = false
-            message = "アクセストークンを取得できませんでした。"
+            onStatusChange("Driveの認証情報を取得できませんでした")
             return
         }
+        onStatusChange("Drive同期中…")
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
                     application.createSyncEngine(token).synchronize { progress ->
-                        scope.launch { message = progress }
+                        scope.launch { onStatusChange(progress) }
                     }
                 }
             }.onSuccess { summary ->
-                message = "同期完了\n送信: ${summary.uploaded}件\n取得: ${summary.downloaded}件\n" +
-                    "競合コピー: ${summary.conflicts}件\nエラー: ${summary.errors}件"
+                val details = buildList {
+                    if (summary.uploaded > 0) add("送信 ${summary.uploaded}件")
+                    if (summary.downloaded > 0) add("取得 ${summary.downloaded}件")
+                    if (summary.conflicts > 0) add("競合 ${summary.conflicts}件")
+                    if (summary.errors > 0) add("エラー ${summary.errors}件")
+                }
+                onStatusChange(
+                    if (details.isEmpty()) "Drive同期済み"
+                    else "Drive同期完了（${details.joinToString("・")}）",
+                )
             }.onFailure { error ->
-                message = "同期に失敗しました。\n${error.message ?: error::class.java.simpleName}"
+                onStatusChange("Drive同期失敗: ${error.message ?: error::class.java.simpleName}")
             }
             running = false
         }
@@ -68,17 +87,21 @@ fun DriveSyncAction(application: SoliMemoApplication) {
                 .onSuccess(::synchronize)
                 .onFailure {
                     running = false
-                    message = "Google認証に失敗しました。"
+                    onStatusChange("Google Driveの認証に失敗しました")
                 }
         } else {
             running = false
-            message = "同期をキャンセルしました。"
+            onStatusChange("Google Driveの同期をキャンセルしました")
         }
     }
 
-    fun authorize() {
+    fun authorize(interactive: Boolean) {
+        if (running) {
+            if (!interactive) autoSyncPending = true
+            return
+        }
         running = true
-        message = "Google Driveへのアクセス権を確認しています。"
+        if (interactive) onStatusChange("Google Driveへのアクセス権を確認中…")
         val request = AuthorizationRequest.builder()
             .setRequestedScopes(listOf(Scope(DRIVE_FILE_SCOPE)))
             .build()
@@ -86,30 +109,58 @@ fun DriveSyncAction(application: SoliMemoApplication) {
             .addOnSuccessListener { result ->
                 val pendingIntent = result.pendingIntent
                 if (result.hasResolution() && pendingIntent != null) {
-                    launcher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+                    if (interactive) {
+                        launcher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+                    } else {
+                        running = false
+                        onStatusChange("Drive再接続が必要です（↻を押してください）")
+                    }
                 } else {
                     synchronize(result)
                 }
             }
             .addOnFailureListener {
                 running = false
-                message = "Google認証に失敗しました。"
+                onStatusChange("Google Driveの認証に失敗しました")
             }
     }
 
-    IconButton(onClick = ::authorize, enabled = !running) {
-        if (running) CircularProgressIndicator(color = Color.White)
-        else Text("↻", color = Color.White)
+    LaunchedEffect(application.noteRepository) {
+        application.noteRepository.localChanges
+            .debounce(2_000)
+            .collect { authorize(interactive = false) }
     }
 
-    message?.let { text ->
-        AlertDialog(
-            onDismissRequest = { if (!running) message = null },
-            title = { Text(if (running) "同期中" else "Google Drive同期") },
-            text = { Text(text) },
-            confirmButton = {
-                if (!running) TextButton(onClick = { message = null }) { Text("閉じる") }
-            },
-        )
+    LaunchedEffect(Unit) {
+        val shouldSync = application.consumeInitialSyncRequest() ||
+            withContext(Dispatchers.IO) { application.noteRepository.hasPendingChanges() }
+        if (shouldSync) authorize(interactive = false)
+    }
+
+    LaunchedEffect(running, autoSyncPending) {
+        if (!running && autoSyncPending) {
+            autoSyncPending = false
+            authorize(interactive = false)
+        }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        var hasReachedResume = false
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> {
+                    if (hasReachedResume) authorize(interactive = false)
+                }
+                Lifecycle.Event.ON_RESUME -> hasReachedResume = true
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    IconButton(onClick = { authorize(interactive = true) }, enabled = !running) {
+        if (running) CircularProgressIndicator(color = Color.White)
+        else Text("↻", color = Color.White)
     }
 }

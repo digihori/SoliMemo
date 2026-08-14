@@ -1,6 +1,9 @@
 package com.digihori.solimemo.data.repository
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import com.digihori.solimemo.data.local.NoteDao
 import com.digihori.solimemo.data.local.NoteEntity
 import com.digihori.solimemo.data.local.SyncState
@@ -11,19 +14,28 @@ class NoteRepository(
     private val currentTimeMillis: () -> Long = System::currentTimeMillis,
     private val newId: () -> String = { UUID.randomUUID().toString() },
 ) {
+    private val mutableLocalChanges = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val localChanges = mutableLocalChanges.asSharedFlow()
+
     fun observeNotes(query: String): Flow<List<NoteEntity>> = noteDao.observeSearch(query.trim())
 
     fun observeNote(id: String): Flow<NoteEntity?> = noteDao.observeById(id)
 
-    suspend fun create(body: String): String? {
+    suspend fun hasPendingChanges(): Boolean = noteDao.findPendingSync().isNotEmpty()
+
+    suspend fun create(title: String, body: String): String? {
+        val normalizedTitle = title.trim().ifEmpty { null }
         val normalizedBody = body.trim()
-        if (normalizedBody.isEmpty()) return null
+        if (normalizedTitle == null && normalizedBody.isEmpty()) return null
         val now = currentTimeMillis()
         val id = newId()
         noteDao.upsert(
             NoteEntity(
                 id = id,
-                title = null,
+                title = normalizedTitle,
                 body = normalizedBody,
                 createdAtEpochMillis = now,
                 updatedAtEpochMillis = now,
@@ -34,6 +46,7 @@ class NoteRepository(
                 lastSyncError = null,
             ),
         )
+        mutableLocalChanges.tryEmit(Unit)
         return id
     }
 
@@ -54,6 +67,7 @@ class NoteRepository(
                 lastSyncError = null,
             ),
         )
+        mutableLocalChanges.tryEmit(Unit)
     }
 
     suspend fun delete(id: String) {
@@ -67,5 +81,6 @@ class NoteRepository(
                 lastSyncError = null,
             ),
         )
+        mutableLocalChanges.tryEmit(Unit)
     }
 }

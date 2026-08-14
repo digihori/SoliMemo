@@ -30,9 +30,9 @@ class NotesViewModel(
         query.value = value
     }
 
-    fun createNote(body: String, onCreated: () -> Unit = {}) {
+    fun createNote(title: String, body: String, onCreated: () -> Unit = {}) {
         viewModelScope.launch {
-            if (repository.create(body) != null) onCreated()
+            if (repository.create(title, body) != null) onCreated()
         }
     }
 
