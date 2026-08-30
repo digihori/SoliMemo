@@ -6,9 +6,9 @@ const MARKDOWN_MIME = "text/markdown";
 
 const elements = Object.fromEntries([
   "client-id", "client-id-config", "authorize", "revoke", "auth-status", "connection", "sync",
-  "open-settings", "settings", "log", "new-title", "new-body", "create", "create-status",
-  "search", "list-status", "timeline", "editor", "edit-title", "edit-body",
-  "edit-status", "save", "delete",
+  "sync-indicator", "open-search", "close-search", "clear-search", "header-search", "app-title",
+  "open-settings", "settings", "log", "new-body", "create", "create-status", "search",
+  "list-status", "timeline", "editor", "edit-body", "edit-status", "save", "delete",
 ].map((id) => [id.replaceAll("-", "_"), document.querySelector(`#${id}`)]));
 
 let tokenClient;
@@ -19,6 +19,7 @@ let pendingAction;
 let notes = [];
 let selected = null;
 let busy = false;
+let busyIndicatorTimer;
 
 class AuthorizationExpiredError extends Error {}
 
@@ -39,6 +40,14 @@ function setStatus(element, message, type = "") {
 
 function setBusy(value) {
   busy = value;
+  window.clearTimeout(busyIndicatorTimer);
+  if (value) {
+    busyIndicatorTimer = window.setTimeout(() => {
+      if (busy) elements.sync_indicator.hidden = false;
+    }, 400);
+  } else {
+    elements.sync_indicator.hidden = true;
+  }
   elements.sync.disabled = value || !accessToken;
   elements.create.disabled = value || !accessToken || !hasNewNoteContent();
   elements.save.disabled = value;
@@ -46,7 +55,7 @@ function setBusy(value) {
 }
 
 function hasNewNoteContent() {
-  return Boolean(elements.new_title.value.trim() || elements.new_body.value.trim());
+  return Boolean(elements.new_body.value.trim());
 }
 
 function clearAccessToken(message = "Google Drive未接続") {
@@ -57,6 +66,7 @@ function clearAccessToken(message = "Google Drive未接続") {
   elements.connection.classList.remove("connected");
   elements.revoke.disabled = true;
   elements.sync.disabled = true;
+  elements.open_search.disabled = true;
   elements.create.disabled = true;
   elements.save.disabled = true;
   elements.delete.disabled = true;
@@ -128,6 +138,7 @@ function authorize() {
       elements.connection.classList.add("connected");
       elements.revoke.disabled = false;
       elements.search.disabled = false;
+      elements.open_search.disabled = false;
       log("drive.file権限で認証しました。トークンはメモリにのみ保持します。");
       const action = pendingAction;
       pendingAction = undefined;
@@ -151,6 +162,8 @@ function revoke() {
     notes = [];
     renderTimeline();
     elements.search.disabled = true;
+    elements.open_search.disabled = true;
+    closeSearch();
     setStatus(elements.list_status, "Google Driveとの接続を解除しました。");
     log("接続を解除しました。");
   });
@@ -260,7 +273,7 @@ function renderTimeline() {
   const visible = notes
     .filter(({ note }) => note.deletedAt === null)
     .filter(({ note }) => !query || `${note.title || ""}\n${note.body}`.toLocaleLowerCase("ja-JP").includes(query))
-    .sort((a, b) => b.note.updatedAt - a.note.updatedAt);
+    .sort((a, b) => a.note.updatedAt - b.note.updatedAt);
   elements.timeline.replaceChildren();
   if (visible.length === 0) {
     const empty = document.createElement("p");
@@ -273,13 +286,9 @@ function renderTimeline() {
     const article = document.createElement("article");
     article.className = "note";
     article.tabIndex = 0;
-    if (item.note.title) {
-      const title = document.createElement("h2");
-      title.textContent = item.note.title;
-      article.append(title);
-    }
     const body = document.createElement("p");
-    body.textContent = item.note.body.length > 300 ? `${item.note.body.slice(0, 300)}…` : item.note.body;
+    const combined = legacyCompatibleBody(item.note);
+    body.textContent = combined.length > 300 ? `${combined.slice(0, 300)}…` : combined;
     const time = document.createElement("time");
     time.dateTime = new Date(item.note.updatedAt).toISOString();
     time.textContent = new Date(item.note.updatedAt).toLocaleString("ja-JP");
@@ -288,6 +297,12 @@ function renderTimeline() {
     article.addEventListener("keydown", (event) => { if (event.key === "Enter") openEditor(item); });
     elements.timeline.append(article);
   }
+  if (!query) elements.timeline.scrollTop = elements.timeline.scrollHeight;
+}
+
+function legacyCompatibleBody(note) {
+  if (!note.title) return note.body;
+  return note.body ? `${note.title}\n\n${note.body}` : note.title;
 }
 
 async function findOrCreateFolder(name, parentId) {
@@ -342,18 +357,17 @@ async function updateDriveFile(item, note) {
 }
 
 async function createNote() {
-  const title = elements.new_title.value.trim() || null;
   const body = elements.new_body.value.trim();
-  if (!title && !body) return;
+  if (!body) return;
   setBusy(true);
   setStatus(elements.create_status, "Driveへ保存しています…");
   try {
     const now = Date.now();
-    const note = { id: crypto.randomUUID(), title, body, createdAt: now, updatedAt: now, deletedAt: null };
+    const note = { id: crypto.randomUUID(), title: null, body, createdAt: now, updatedAt: now, deletedAt: null };
     const metadata = await createDriveFile(note);
     notes.push({ metadata, note });
-    elements.new_title.value = "";
     elements.new_body.value = "";
+    resizeComposer();
     renderTimeline();
     setStatus(elements.create_status, "投稿しました。", "success");
     log(`新規作成: ${metadata.name}`);
@@ -370,8 +384,7 @@ async function createNote() {
 
 function openEditor(item) {
   selected = item;
-  elements.edit_title.value = item.note.title || "";
-  elements.edit_body.value = item.note.body;
+  elements.edit_body.value = legacyCompatibleBody(item.note);
   setStatus(elements.edit_status, "");
   elements.editor.showModal();
 }
@@ -380,15 +393,14 @@ async function saveSelected(deleted = false, deletionConfirmed = false) {
   if (!selected) return;
   if (deleted && !deletionConfirmed && !window.confirm("このメモを削除しますか？")) return;
   const body = elements.edit_body.value;
-  const title = elements.edit_title.value.trim() || null;
-  if (!deleted && !title && !body.trim()) {
-    setStatus(elements.edit_status, "タイトルまたは本文を入力してください。", "error");
+  if (!deleted && !body.trim()) {
+    setStatus(elements.edit_status, "本文を入力してください。", "error");
     return;
   }
   setBusy(true);
   setStatus(elements.edit_status, deleted ? "削除を同期しています…" : "保存しています…");
   try {
-    const note = { ...selected.note, title, body, updatedAt: Date.now(), deletedAt: deleted ? Date.now() : null };
+    const note = { ...selected.note, title: null, body, updatedAt: Date.now(), deletedAt: deleted ? Date.now() : null };
     const metadata = await updateDriveFile(selected, note);
     selected.note = note;
     selected.metadata = metadata;
@@ -413,13 +425,45 @@ elements.open_settings.addEventListener("click", () => elements.settings.showMod
 function updateCreateButton() {
   elements.create.disabled = busy || !accessToken || !hasNewNoteContent();
 }
-elements.new_title.addEventListener("input", updateCreateButton);
-elements.new_body.addEventListener("input", updateCreateButton);
+function resizeComposer() {
+  elements.new_body.style.height = "auto";
+  elements.new_body.style.height = `${Math.min(elements.new_body.scrollHeight, 128)}px`;
+}
+elements.new_body.addEventListener("input", () => {
+  updateCreateButton();
+  resizeComposer();
+});
 elements.new_body.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") createNote();
 });
 elements.create.addEventListener("click", createNote);
 elements.search.addEventListener("input", renderTimeline);
+function openSearch() {
+  document.body.classList.add("searching");
+  elements.app_title.hidden = true;
+  elements.header_search.hidden = false;
+  elements.open_search.hidden = true;
+  elements.sync.hidden = true;
+  elements.open_settings.hidden = true;
+  elements.search.focus();
+}
+function closeSearch() {
+  document.body.classList.remove("searching");
+  elements.search.value = "";
+  elements.app_title.hidden = false;
+  elements.header_search.hidden = true;
+  elements.open_search.hidden = false;
+  elements.sync.hidden = false;
+  elements.open_settings.hidden = false;
+  renderTimeline();
+}
+elements.open_search.addEventListener("click", openSearch);
+elements.close_search.addEventListener("click", closeSearch);
+elements.clear_search.addEventListener("click", () => {
+  elements.search.value = "";
+  elements.search.focus();
+  renderTimeline();
+});
 elements.save.addEventListener("click", () => saveSelected(false));
 elements.delete.addEventListener("click", () => saveSelected(true));
 elements.editor.addEventListener("close", () => { selected = null; });

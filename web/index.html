@@ -16,9 +16,16 @@
 <body>
   <header class="app-bar">
     <div class="bar-content">
-      <h1>SoliMemo</h1>
+      <h1 id="app-title">SoliMemo</h1>
+      <div id="header-search" class="header-search" hidden>
+        <button id="close-search" class="icon-button" aria-label="検索を閉じる">←</button>
+        <input id="search" type="search" placeholder="メモを検索" aria-label="メモを検索" disabled>
+        <button id="clear-search" class="icon-button" aria-label="検索語を消去">×</button>
+      </div>
       <div class="bar-actions">
+        <span id="sync-indicator" class="sync-indicator" hidden aria-label="同期中"></span>
         <button id="sync" class="icon-button" disabled title="Driveから再読込" aria-label="Driveから再読込">↻</button>
+        <button id="open-search" class="icon-button" disabled title="メモを検索" aria-label="メモを検索">⌕</button>
         <button id="open-settings" class="icon-button" title="接続設定" aria-label="接続設定">⋮</button>
       </div>
     </div>
@@ -42,26 +49,18 @@
       <button id="authorize">Google Driveに接続</button>
     </section>
 
+    <p id="list-status" class="status list-status">Google Driveに接続してください。</p>
+
+    <section id="timeline" class="timeline" aria-live="polite"></section>
+
     <section class="card composer">
-      <label for="new-title">タイトル（任意）</label>
-      <input id="new-title" type="text" maxlength="200">
-      <label for="new-body">メモの入力</label>
-      <textarea id="new-body" rows="3"></textarea>
+      <label class="visually-hidden" for="new-body">メモの入力</label>
+      <textarea id="new-body" rows="1" placeholder="メモを入力"></textarea>
       <div class="composer-actions">
         <span id="create-status" class="status" role="status"></span>
         <button id="create" disabled>投稿</button>
       </div>
     </section>
-
-    <section class="search-area">
-      <label class="search-box">
-        <span>⌕</span>
-        <input id="search" type="search" placeholder="覚えている言葉で検索" disabled>
-      </label>
-      <p id="list-status" class="status">Google Driveに接続してください。</p>
-    </section>
-
-    <section id="timeline" class="timeline" aria-live="polite"></section>
 
     <section class="app-details" aria-labelledby="app-details-title">
       <h2 id="app-details-title">SoliMemoの目的と機能</h2>
@@ -78,8 +77,6 @@
         <h2>メモを編集</h2>
         <button value="cancel" class="icon-button dark" aria-label="閉じる">×</button>
       </div>
-      <label for="edit-title">タイトル（任意）</label>
-      <input id="edit-title" type="text" maxlength="200">
       <label for="edit-body">本文</label>
       <textarea id="edit-body" rows="14"></textarea>
       <p id="edit-status" class="status" role="status"></p>
