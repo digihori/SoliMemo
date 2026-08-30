@@ -433,27 +433,52 @@ function resizeComposer() {
   elements.new_body.style.height = "auto";
   elements.new_body.style.height = `${Math.min(elements.new_body.scrollHeight, 128)}px`;
 }
+let largestViewportHeight = window.visualViewport?.height || window.innerHeight;
+let keyboardWasOpen = false;
+
 function updateViewportMetrics() {
   const viewport = window.visualViewport;
   document.documentElement.style.setProperty(
     "--visual-viewport-height",
     `${viewport?.height || window.innerHeight}px`,
   );
-  document.documentElement.style.setProperty(
-    "--visual-viewport-offset-top",
-    `${viewport?.offsetTop || 0}px`,
-  );
+}
+function exitComposeMode({ blur = false } = {}) {
+  document.body.classList.remove("composing");
+  keyboardWasOpen = false;
+  if (blur && document.activeElement === elements.new_body) elements.new_body.blur();
+  const restoreScroll = () => window.scrollTo({ top: 0, behavior: "auto" });
+  window.requestAnimationFrame(restoreScroll);
+  window.setTimeout(restoreScroll, 250);
+}
+function handleViewportChange() {
+  const height = window.visualViewport?.height || window.innerHeight;
+  updateViewportMetrics();
+  if (!document.body.classList.contains("composing")) {
+    largestViewportHeight = Math.max(largestViewportHeight, height);
+    return;
+  }
+  const keyboardHeight = largestViewportHeight - height;
+  if (keyboardHeight > 120) {
+    keyboardWasOpen = true;
+  } else if (keyboardWasOpen && keyboardHeight < 80) {
+    exitComposeMode({ blur: true });
+  }
 }
 function enterComposeMode() {
+  keyboardWasOpen = false;
   updateViewportMetrics();
   document.body.classList.add("composing");
+  window.requestAnimationFrame(() => {
+    elements.timeline.scrollTop = elements.timeline.scrollHeight;
+  });
 }
 function leaveComposeMode() {
   window.setTimeout(() => {
-    if (document.activeElement !== elements.new_body) document.body.classList.remove("composing");
+    if (document.activeElement !== elements.new_body) exitComposeMode();
   }, 150);
 }
-window.visualViewport?.addEventListener("resize", updateViewportMetrics);
+window.visualViewport?.addEventListener("resize", handleViewportChange);
 window.visualViewport?.addEventListener("scroll", updateViewportMetrics);
 elements.new_body.addEventListener("focus", enterComposeMode);
 elements.new_body.addEventListener("blur", leaveComposeMode);

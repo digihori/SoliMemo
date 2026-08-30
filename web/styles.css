@@ -239,7 +239,7 @@ pre { background: #202124; color: #e8eaed; border-radius: 8px; padding: 12px; ma
     left: 8px;
     position: fixed;
     right: 8px;
-    top: calc(64px + var(--visual-viewport-offset-top, 0px));
+    top: 64px;
     width: auto;
     z-index: 9;
   }
