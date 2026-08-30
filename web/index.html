@@ -23,8 +23,10 @@
         <button id="clear-search" class="icon-button" aria-label="検索語を消去">×</button>
       </div>
       <div class="bar-actions">
-        <span id="sync-indicator" class="sync-indicator" hidden aria-label="同期中"></span>
-        <button id="sync" class="icon-button" disabled title="Driveから再読込" aria-label="Driveから再読込">↻</button>
+        <button id="sync" class="icon-button" disabled title="Driveから再読込" aria-label="Driveから再読込">
+          <span class="sync-symbol" aria-hidden="true">↻</span>
+          <span id="sync-indicator" class="sync-indicator" hidden aria-hidden="true"></span>
+        </button>
         <button id="open-search" class="icon-button" disabled title="メモを検索" aria-label="メモを検索">⌕</button>
         <button id="open-settings" class="icon-button" title="接続設定" aria-label="接続設定">⋮</button>
       </div>

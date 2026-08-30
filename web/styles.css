@@ -54,7 +54,12 @@ h1 { margin: 0; font-size: 1.35rem; }
   padding: 8px 4px;
 }
 .header-search input::placeholder { color: #ffffffbb; }
+#sync { position: relative; }
 .sync-indicator {
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
   width: 14px;
   height: 14px;
   border: 2px solid #ffffff66;
@@ -62,7 +67,11 @@ h1 { margin: 0; font-size: 1.35rem; }
   border-radius: 50%;
   animation: spin .8s linear infinite;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+#sync.syncing .sync-symbol { visibility: hidden; }
+@keyframes spin {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
 
 .layout { width: min(720px, calc(100% - 24px)); margin: 12px auto 64px; }
 .intro { padding: 8px 4px 12px; }

@@ -43,10 +43,14 @@ function setBusy(value) {
   window.clearTimeout(busyIndicatorTimer);
   if (value) {
     busyIndicatorTimer = window.setTimeout(() => {
-      if (busy) elements.sync_indicator.hidden = false;
+      if (busy) {
+        elements.sync_indicator.hidden = false;
+        elements.sync.classList.add("syncing");
+      }
     }, 400);
   } else {
     elements.sync_indicator.hidden = true;
+    elements.sync.classList.remove("syncing");
   }
   elements.sync.disabled = value || !accessToken;
   elements.create.disabled = value || !accessToken || !hasNewNoteContent();
