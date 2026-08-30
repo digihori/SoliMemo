@@ -203,8 +203,22 @@ pre { background: #202124; color: #e8eaed; border-radius: 8px; padding: 12px; ma
 
 @media (max-width: 520px) {
   .layout { width: min(100% - 16px, 720px); margin-top: 8px; }
-  .connection-card { align-items: center; }
-  .connection-card p { max-width: 210px; }
+  .intro { padding: 4px 4px 8px; }
+  .intro h2 { font-size: 1.12rem; margin: 1px 0 4px; }
+  .intro > p { font-size: .8rem; line-height: 1.4; }
+  .oauth-purpose { font-size: .76rem; margin-top: 4px; }
+  .connection-card {
+    align-items: center;
+    border-radius: 10px;
+    min-height: 44px;
+    padding: 5px 8px 5px 10px;
+  }
+  .connection-card strong { font-size: .82rem; }
+  .connection-card p { display: none; }
+  .connection-card button {
+    font-size: .76rem;
+    padding: 7px 9px;
+  }
   .composer { grid-template-columns: minmax(0, 1fr) auto; }
   .composer-actions .status { display: none; }
   .memo-workspace { height: clamp(330px, 48dvh, 500px); }
