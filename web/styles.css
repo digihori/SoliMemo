@@ -82,15 +82,17 @@ h1 { margin: 0; font-size: 1.35rem; }
 .connection-card p { margin: 2px 0 0; color: #5f6368; font-size: .8rem; }
 .connection-card button { flex-shrink: 0; padding: 8px 12px; }
 .connection-card.connected { border-color: #81c995; background: #f0fff4; }
+.memo-workspace {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: clamp(340px, 48dvh, 500px);
+}
 .composer {
-  bottom: 8px;
   display: grid;
   gap: 8px;
   grid-template-columns: minmax(0, 1fr) auto;
   margin-top: 12px;
   padding: 12px;
-  position: sticky;
-  z-index: 5;
 }
 .composer textarea { max-height: 128px; min-height: 48px; resize: none; }
 label { display: block; font-weight: 650; margin-bottom: 8px; }
@@ -131,11 +133,11 @@ button.danger { background: #b3261e; }
 .timeline {
   display: grid;
   gap: 10px;
-  min-height: 32vh;
-  max-height: 55vh;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-block: 4px;
+  padding: 4px 0 12px;
+  scroll-padding-bottom: 12px;
 }
 .note {
   background: white;
@@ -151,7 +153,7 @@ button.danger { background: #b3261e; }
 .note time { display: block; margin-top: 10px; color: #5f6368; font-size: .78rem; }
 .empty { text-align: center; color: #5f6368; padding: 48px 16px; }
 body.searching .composer { display: none; }
-body.searching .timeline { max-height: 70vh; min-height: 55vh; }
+body.searching .memo-workspace { grid-template-rows: auto minmax(0, 1fr); }
 
 .app-details {
   border-top: 1px solid #dfe1e5;
@@ -196,7 +198,7 @@ pre { background: #202124; color: #e8eaed; border-radius: 8px; padding: 12px; ma
   .connection-card p { max-width: 210px; }
   .composer { grid-template-columns: minmax(0, 1fr) auto; }
   .composer-actions .status { display: none; }
-  .timeline { max-height: none; min-height: 30vh; }
+  .memo-workspace { height: clamp(330px, 48dvh, 500px); }
   .dialog-actions { flex-wrap: wrap; }
   .dialog-actions .spacer { min-width: 20px; }
 }
