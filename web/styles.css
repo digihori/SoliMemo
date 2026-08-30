@@ -222,6 +222,33 @@ pre { background: #202124; color: #e8eaed; border-radius: 8px; padding: 12px; ma
   .composer { grid-template-columns: minmax(0, 1fr) auto; }
   .composer-actions .status { display: none; }
   .memo-workspace { height: clamp(330px, 48dvh, 500px); }
+  body.composing { overflow: hidden; }
+  body.composing .app-bar {
+    left: 0;
+    position: fixed;
+    right: 0;
+  }
+  body.composing .intro,
+  body.composing .connection-card,
+  body.composing .app-details,
+  body.composing .site-footer { display: none; }
+  body.composing .memo-workspace {
+    background: #f5f6fa;
+    grid-template-rows: minmax(0, 1fr) max-content;
+    height: calc(var(--visual-viewport-height, 100dvh) - 64px);
+    left: 8px;
+    position: fixed;
+    right: 8px;
+    top: calc(64px + var(--visual-viewport-offset-top, 0px));
+    width: auto;
+    z-index: 9;
+  }
+  body.composing .list-status { display: none; }
+  body.composing .composer {
+    border-bottom: 0;
+    border-radius: 14px 14px 0 0;
+    margin-top: 8px;
+  }
   .dialog-actions { flex-wrap: wrap; }
   .dialog-actions .spacer { min-width: 20px; }
 }

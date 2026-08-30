@@ -433,6 +433,30 @@ function resizeComposer() {
   elements.new_body.style.height = "auto";
   elements.new_body.style.height = `${Math.min(elements.new_body.scrollHeight, 128)}px`;
 }
+function updateViewportMetrics() {
+  const viewport = window.visualViewport;
+  document.documentElement.style.setProperty(
+    "--visual-viewport-height",
+    `${viewport?.height || window.innerHeight}px`,
+  );
+  document.documentElement.style.setProperty(
+    "--visual-viewport-offset-top",
+    `${viewport?.offsetTop || 0}px`,
+  );
+}
+function enterComposeMode() {
+  updateViewportMetrics();
+  document.body.classList.add("composing");
+}
+function leaveComposeMode() {
+  window.setTimeout(() => {
+    if (document.activeElement !== elements.new_body) document.body.classList.remove("composing");
+  }, 150);
+}
+window.visualViewport?.addEventListener("resize", updateViewportMetrics);
+window.visualViewport?.addEventListener("scroll", updateViewportMetrics);
+elements.new_body.addEventListener("focus", enterComposeMode);
+elements.new_body.addEventListener("blur", leaveComposeMode);
 elements.new_body.addEventListener("input", () => {
   updateCreateButton();
   resizeComposer();
