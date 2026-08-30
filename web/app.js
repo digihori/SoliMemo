@@ -433,62 +433,6 @@ function resizeComposer() {
   elements.new_body.style.height = "auto";
   elements.new_body.style.height = `${Math.min(elements.new_body.scrollHeight, 128)}px`;
 }
-let largestViewportHeight = window.visualViewport?.height || window.innerHeight;
-let keyboardWasOpen = false;
-
-function updateViewportMetrics() {
-  const viewport = window.visualViewport;
-  document.documentElement.style.setProperty(
-    "--visual-viewport-height",
-    `${viewport?.height || window.innerHeight}px`,
-  );
-}
-function scrollTimelineToLatest() {
-  const scroll = () => { elements.timeline.scrollTop = elements.timeline.scrollHeight; };
-  window.requestAnimationFrame(scroll);
-  window.setTimeout(scroll, 100);
-  window.setTimeout(scroll, 350);
-}
-function exitComposeMode({ blur = false } = {}) {
-  document.body.classList.remove("composing");
-  keyboardWasOpen = false;
-  if (blur && document.activeElement === elements.new_body) elements.new_body.blur();
-  const restoreScroll = () => window.scrollTo({ top: 0, behavior: "auto" });
-  window.requestAnimationFrame(restoreScroll);
-  window.setTimeout(restoreScroll, 250);
-}
-function handleViewportChange() {
-  const height = window.visualViewport?.height || window.innerHeight;
-  updateViewportMetrics();
-  if (!document.body.classList.contains("composing")) {
-    largestViewportHeight = Math.max(largestViewportHeight, height);
-    return;
-  }
-  const keyboardHeight = largestViewportHeight - height;
-  if (keyboardHeight > 120) {
-    keyboardWasOpen = true;
-    scrollTimelineToLatest();
-  } else if (keyboardWasOpen && keyboardHeight < 80) {
-    exitComposeMode({ blur: true });
-  }
-}
-function enterComposeMode() {
-  keyboardWasOpen = false;
-  updateViewportMetrics();
-  document.body.classList.add("composing");
-  window.scrollTo({ top: 0, behavior: "auto" });
-  scrollTimelineToLatest();
-}
-function leaveComposeMode() {
-  window.setTimeout(() => {
-    if (document.activeElement !== elements.new_body) exitComposeMode();
-  }, 150);
-}
-window.visualViewport?.addEventListener("resize", handleViewportChange);
-window.visualViewport?.addEventListener("scroll", updateViewportMetrics);
-window.addEventListener("resize", handleViewportChange);
-elements.new_body.addEventListener("focus", enterComposeMode);
-elements.new_body.addEventListener("blur", leaveComposeMode);
 elements.new_body.addEventListener("input", () => {
   updateCreateButton();
   resizeComposer();

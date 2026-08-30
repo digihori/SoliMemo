@@ -91,6 +91,7 @@ h1 { margin: 0; font-size: 1.35rem; }
 .connection-card p { margin: 2px 0 0; color: #5f6368; font-size: .8rem; }
 .connection-card button { flex-shrink: 0; padding: 8px 12px; }
 .connection-card.connected { border-color: #81c995; background: #f0fff4; }
+.mobile-web-notice { display: none; }
 .memo-workspace {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -208,37 +209,18 @@ pre { background: #202124; color: #e8eaed; border-radius: 8px; padding: 12px; ma
   .intro h2 { font-size: 1.12rem; margin: 1px 0 4px; }
   .intro > p { font-size: .8rem; line-height: 1.4; }
   .oauth-purpose { font-size: .76rem; margin-top: 4px; }
-  .connection-card {
-    align-items: center;
-    border-radius: 10px;
-    min-height: 44px;
-    padding: 5px 8px 5px 10px;
-  }
-  .connection-card strong { font-size: .82rem; }
-  .connection-card p { display: none; }
-  .connection-card button {
-    font-size: .76rem;
-    padding: 7px 9px;
-  }
-  .composer { grid-template-columns: minmax(0, 1fr) auto; }
-  .composer-actions .status { display: none; }
-  .memo-workspace { height: clamp(330px, 48dvh, 500px); }
-  body.composing .layout { margin-top: 0; }
-  body.composing .intro,
-  body.composing .connection-card,
-  body.composing .app-details,
-  body.composing .site-footer { display: none; }
-  body.composing .memo-workspace {
-    background: #f5f6fa;
-    grid-template-rows: minmax(0, 1fr) max-content;
-    height: calc(var(--visual-viewport-height, 100dvh) - 64px);
-  }
-  body.composing .list-status { display: none; }
-  body.composing .composer {
-    border-bottom: 0;
-    border-radius: 14px 14px 0 0;
+  .bar-actions,
+  .connection-card,
+  .memo-workspace { display: none; }
+  .mobile-web-notice {
+    display: block;
     margin-top: 8px;
+    padding: 16px;
   }
+  .mobile-web-notice h2 { color: #283593; font-size: 1.05rem; margin: 0 0 8px; }
+  .mobile-web-notice p { font-size: .86rem; line-height: 1.6; margin: 0 0 10px; }
+  .mobile-web-notice .web-url { color: #3949ab; font-weight: 650; overflow-wrap: anywhere; }
+  .store-link { color: #3949ab; font-size: .86rem; font-weight: 650; }
   .dialog-actions { flex-wrap: wrap; }
   .dialog-actions .spacer { min-width: 20px; }
 }
