@@ -143,6 +143,7 @@ button.danger { background: #b3261e; }
   display: grid;
   gap: 10px;
   min-height: 0;
+  overflow-anchor: none;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 4px 0 12px;
@@ -222,12 +223,7 @@ pre { background: #202124; color: #e8eaed; border-radius: 8px; padding: 12px; ma
   .composer { grid-template-columns: minmax(0, 1fr) auto; }
   .composer-actions .status { display: none; }
   .memo-workspace { height: clamp(330px, 48dvh, 500px); }
-  body.composing { overflow: hidden; }
-  body.composing .app-bar {
-    left: 0;
-    position: fixed;
-    right: 0;
-  }
+  body.composing .layout { margin-top: 0; }
   body.composing .intro,
   body.composing .connection-card,
   body.composing .app-details,
@@ -236,12 +232,6 @@ pre { background: #202124; color: #e8eaed; border-radius: 8px; padding: 12px; ma
     background: #f5f6fa;
     grid-template-rows: minmax(0, 1fr) max-content;
     height: calc(var(--visual-viewport-height, 100dvh) - 64px);
-    left: 8px;
-    position: fixed;
-    right: 8px;
-    top: 64px;
-    width: auto;
-    z-index: 9;
   }
   body.composing .list-status { display: none; }
   body.composing .composer {

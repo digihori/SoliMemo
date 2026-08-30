@@ -443,6 +443,12 @@ function updateViewportMetrics() {
     `${viewport?.height || window.innerHeight}px`,
   );
 }
+function scrollTimelineToLatest() {
+  const scroll = () => { elements.timeline.scrollTop = elements.timeline.scrollHeight; };
+  window.requestAnimationFrame(scroll);
+  window.setTimeout(scroll, 100);
+  window.setTimeout(scroll, 350);
+}
 function exitComposeMode({ blur = false } = {}) {
   document.body.classList.remove("composing");
   keyboardWasOpen = false;
@@ -461,6 +467,7 @@ function handleViewportChange() {
   const keyboardHeight = largestViewportHeight - height;
   if (keyboardHeight > 120) {
     keyboardWasOpen = true;
+    scrollTimelineToLatest();
   } else if (keyboardWasOpen && keyboardHeight < 80) {
     exitComposeMode({ blur: true });
   }
@@ -469,9 +476,8 @@ function enterComposeMode() {
   keyboardWasOpen = false;
   updateViewportMetrics();
   document.body.classList.add("composing");
-  window.requestAnimationFrame(() => {
-    elements.timeline.scrollTop = elements.timeline.scrollHeight;
-  });
+  window.scrollTo({ top: 0, behavior: "auto" });
+  scrollTimelineToLatest();
 }
 function leaveComposeMode() {
   window.setTimeout(() => {
@@ -480,6 +486,7 @@ function leaveComposeMode() {
 }
 window.visualViewport?.addEventListener("resize", handleViewportChange);
 window.visualViewport?.addEventListener("scroll", updateViewportMetrics);
+window.addEventListener("resize", handleViewportChange);
 elements.new_body.addEventListener("focus", enterComposeMode);
 elements.new_body.addEventListener("blur", leaveComposeMode);
 elements.new_body.addEventListener("input", () => {
