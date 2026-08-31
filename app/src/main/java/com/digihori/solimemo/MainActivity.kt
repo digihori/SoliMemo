@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -19,6 +21,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -29,6 +33,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -37,11 +43,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
-import com.digihori.solimemo.ui.poc.DrivePocScreen
 import com.digihori.solimemo.ui.notes.NoteEditorScreen
 import com.digihori.solimemo.ui.notes.NotesViewModel
 import com.digihori.solimemo.ui.notes.TimelineContent
@@ -58,7 +64,7 @@ class MainActivity : ComponentActivity() {
 private enum class Screen {
     HOME,
     NOTE_EDITOR,
-    DRIVE_POC,
+    WEB_INFORMATION,
     PRIVACY_POLICY,
     VERSION_INFORMATION,
 }
@@ -96,17 +102,10 @@ fun SoliMemoApp() {
                         onBack = { screen = Screen.HOME },
                     )
                 }
-                Screen.DRIVE_POC -> DetailScreen(
-                    title = stringResource(R.string.phase1_menu),
+                Screen.WEB_INFORMATION -> DetailScreen(
+                    title = stringResource(R.string.web_information),
                     onBack = { screen = Screen.HOME },
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        verticalArrangement = Arrangement.Center,
-                    ) { DrivePocScreen() }
-                }
+                ) { WebInformationContent() }
                 Screen.PRIVACY_POLICY -> DetailScreen(
                     title = stringResource(R.string.privacy_policy),
                     onBack = { screen = Screen.HOME },
@@ -130,48 +129,103 @@ private fun HomeScreen(
     onNavigate: (Screen) -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    var searchMode by remember { mutableStateOf(false) }
+    val searchFocusRequester = remember { FocusRequester() }
+    val query by viewModel.query.collectAsStateWithLifecycle()
+
+    LaunchedEffect(searchMode) {
+        if (searchMode) searchFocusRequester.requestFocus()
+    }
+
+    fun closeSearch() {
+        searchMode = false
+        viewModel.setQuery("")
+    }
+    BackHandler(enabled = searchMode, onBack = ::closeSearch)
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.app_name)) },
+                title = {
+                    if (searchMode) {
+                        TextField(
+                            value = query,
+                            onValueChange = viewModel::setQuery,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(searchFocusRequester),
+                            placeholder = { Text("メモを検索", color = Color.White.copy(alpha = .75f)) },
+                            singleLine = true,
+                            colors = TextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = Color.White,
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.White,
+                                unfocusedIndicatorColor = Color.White.copy(alpha = .6f),
+                            ),
+                        )
+                    } else {
+                        Text(stringResource(R.string.app_name))
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = SoliMemoPrimary,
+                    navigationIconContentColor = Color.White,
                     titleContentColor = Color.White,
                     actionIconContentColor = Color.White,
                 ),
-                actions = {
-                    val application = LocalContext.current.applicationContext as SoliMemoApplication
-                    DriveSyncAction(application, onSyncStatusChange)
-                    Box {
-                        IconButton(onClick = { menuExpanded = true }) {
-                            Text("⋮", style = MaterialTheme.typography.headlineSmall)
+                navigationIcon = {
+                    if (searchMode) {
+                        IconButton(onClick = ::closeSearch) {
+                            Text("←", style = MaterialTheme.typography.headlineSmall)
                         }
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.phase1_menu)) },
-                                onClick = {
-                                    menuExpanded = false
-                                    onNavigate(Screen.DRIVE_POC)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.privacy_policy)) },
-                                onClick = {
-                                    menuExpanded = false
-                                    onNavigate(Screen.PRIVACY_POLICY)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.version_information)) },
-                                onClick = {
-                                    menuExpanded = false
-                                    onNavigate(Screen.VERSION_INFORMATION)
-                                },
-                            )
+                    }
+                },
+                actions = {
+                    if (searchMode) {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.setQuery("") }) {
+                                Text("×", style = MaterialTheme.typography.headlineSmall)
+                            }
+                        }
+                    } else {
+                        val application = LocalContext.current.applicationContext as SoliMemoApplication
+                        DriveSyncAction(application, onSyncStatusChange)
+                        IconButton(onClick = { searchMode = true }) {
+                            Text("⌕", style = MaterialTheme.typography.headlineSmall)
+                        }
+                        Box {
+                            IconButton(onClick = { menuExpanded = true }) {
+                                Text("⋮", style = MaterialTheme.typography.headlineSmall)
+                            }
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.web_information)) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onNavigate(Screen.WEB_INFORMATION)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.privacy_policy)) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onNavigate(Screen.PRIVACY_POLICY)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.version_information)) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onNavigate(Screen.VERSION_INFORMATION)
+                                    },
+                                )
+                            }
                         }
                     }
                 },
@@ -181,6 +235,7 @@ private fun HomeScreen(
         TimelineContent(
             viewModel = viewModel,
             syncStatus = syncStatus,
+            composerVisible = !searchMode,
             onOpenNote = onOpenNote,
             modifier = Modifier.padding(contentPadding),
         )
@@ -219,6 +274,34 @@ private fun DetailScreen(
                 .padding(contentPadding),
         ) {
             content()
+        }
+    }
+}
+
+@Composable
+private fun WebInformationContent() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = stringResource(R.string.web_information_heading),
+            style = MaterialTheme.typography.headlineSmall,
+        )
+        Text(
+            text = stringResource(R.string.web_information_description),
+            modifier = Modifier.padding(top = 16.dp),
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        SelectionContainer {
+            Text(
+                text = stringResource(R.string.web_app_url),
+                modifier = Modifier.padding(top = 20.dp),
+                color = SoliMemoPrimary,
+                style = MaterialTheme.typography.titleMedium,
+            )
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.digihori.solimemo.ui.sync
 
 import android.app.Activity
+import android.util.Log
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -9,29 +10,33 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.debounce
 import com.digihori.solimemo.SoliMemoApplication
 
 private const val DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file"
+private const val TAG = "DriveSyncAction"
+
+private fun Throwable.summary(): String =
+    message?.takeIf(String::isNotBlank) ?: javaClass.simpleName
 
 @OptIn(FlowPreview::class)
 @Composable
@@ -41,10 +46,19 @@ fun DriveSyncAction(
 ) {
     val activity = checkNotNull(LocalActivity.current)
     val client = remember(activity) { Identity.getAuthorizationClient(activity) }
-    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     var running by remember { mutableStateOf(false) }
+    var showRunningIndicator by remember { mutableStateOf(false) }
     var autoSyncPending by remember { mutableStateOf(false) }
+
+    LaunchedEffect(running) {
+        if (running) {
+            delay(400)
+            showRunningIndicator = running
+        } else {
+            showRunningIndicator = false
+        }
+    }
 
     fun synchronize(result: AuthorizationResult) {
         val token = result.accessToken
@@ -82,16 +96,25 @@ fun DriveSyncAction(
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult(),
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            runCatching { client.getAuthorizationResultFromIntent(result.data!!) }
+        val data = result.data
+        if (data != null) {
+            runCatching { client.getAuthorizationResultFromIntent(data) }
                 .onSuccess(::synchronize)
-                .onFailure {
+                .onFailure { error ->
+                    Log.e(TAG, "Authorization result could not be read (resultCode=${result.resultCode})", error)
                     running = false
-                    onStatusChange("Google Driveの認証に失敗しました")
+                    onStatusChange("Google Driveの認証に失敗しました: ${error.summary()}")
                 }
         } else {
+            Log.w(TAG, "Authorization UI returned no data (resultCode=${result.resultCode})")
             running = false
-            onStatusChange("Google Driveの同期をキャンセルしました")
+            onStatusChange(
+                if (result.resultCode == Activity.RESULT_CANCELED) {
+                    "Google Driveの認証画面が完了しませんでした"
+                } else {
+                    "Google Driveの認証に失敗しました（結果: ${result.resultCode}）"
+                },
+            )
         }
     }
 
@@ -119,9 +142,10 @@ fun DriveSyncAction(
                     synchronize(result)
                 }
             }
-            .addOnFailureListener {
+            .addOnFailureListener { error ->
+                Log.e(TAG, "Authorization request failed", error)
                 running = false
-                onStatusChange("Google Driveの認証に失敗しました")
+                onStatusChange("Google Driveの認証に失敗しました: ${error.summary()}")
             }
     }
 
@@ -144,23 +168,14 @@ fun DriveSyncAction(
         }
     }
 
-    DisposableEffect(lifecycleOwner) {
-        var hasReachedResume = false
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> {
-                    if (hasReachedResume) authorize(interactive = false)
-                }
-                Lifecycle.Event.ON_RESUME -> hasReachedResume = true
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
     IconButton(onClick = { authorize(interactive = true) }, enabled = !running) {
-        if (running) CircularProgressIndicator(color = Color.White)
+        if (showRunningIndicator) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                color = Color.White.copy(alpha = .85f),
+                strokeWidth = 2.dp,
+            )
+        }
         else Text("↻", color = Color.White)
     }
 }

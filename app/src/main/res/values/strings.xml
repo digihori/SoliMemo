@@ -1,5 +1,9 @@
 <resources>
     <string name="app_name">SoliMemo</string>
+    <string name="web_information">Web版について</string>
+    <string name="web_information_heading">PCのブラウザでも利用できます</string>
+    <string name="web_information_description">Web版はPCブラウザ向けです。Androidアプリと同じGoogleアカウントでGoogle Driveへ接続すると、同じメモを参照・編集できます。</string>
+    <string name="web_app_url" translatable="false">https://solimemo.digihori.com/</string>
     <string name="privacy_policy">プライバシーポリシー</string>
     <string name="version_information">バージョン情報</string>
     <string name="version_label">バージョン %1$s</string>

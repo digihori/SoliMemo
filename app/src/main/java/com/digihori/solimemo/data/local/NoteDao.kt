@@ -15,7 +15,7 @@ interface NoteDao {
         SELECT * FROM notes
         WHERE deletedAtEpochMillis IS NULL
           AND (:query = '' OR title LIKE '%' || :query || '%' OR body LIKE '%' || :query || '%')
-        ORDER BY updatedAtEpochMillis DESC
+        ORDER BY updatedAtEpochMillis ASC
         """,
     )
     fun observeSearch(query: String): Flow<List<NoteEntity>>
