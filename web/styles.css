@@ -162,6 +162,11 @@ button.danger { background: #b3261e; }
 .note h2 { font-size: 1rem; margin: 0 0 7px; }
 .note p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; line-height: 1.55; }
 .note time { display: block; margin-top: 10px; color: #5f6368; font-size: .78rem; }
+.note a, .trash-note a { color: #3949ab; text-decoration: underline; }
+.trash-list { display: grid; gap: 10px; max-height: 60vh; overflow-y: auto; }
+.trash-note { border: 1px solid #dfe1e5; border-radius: 10px; padding: 12px; }
+.trash-note p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.trash-note .dialog-actions { margin-top: 8px; }
 .empty { text-align: center; color: #5f6368; padding: 48px 16px; }
 body.searching .composer { display: none; }
 body.searching .memo-workspace { grid-template-rows: auto minmax(0, 1fr); }

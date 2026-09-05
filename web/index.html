@@ -8,10 +8,10 @@
   <meta name="description" content="SoliMemoは、メモを自分の端末とGoogle Driveに保存する、自分専用のタイムライン型メモアプリです。">
   <link rel="canonical" href="https://solimemo.digihori.com/">
   <title>SoliMemo</title>
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=15">
   <script src="https://accounts.google.com/gsi/client" async></script>
   <script src="config.js"></script>
-  <script src="app.js?v=14" defer></script>
+  <script src="app.js?v=15" defer></script>
 </head>
 <body>
   <header class="app-bar">
@@ -114,6 +114,7 @@
       </div>
       <p class="hint">アクセストークンはブラウザのメモリにだけ保持し、デジホリ工房のサーバーへ送信・保存しません。</p>
       <div class="dialog-actions">
+        <button id="open-trash" type="button" class="secondary" disabled>ゴミ箱</button>
         <button id="revoke" type="button" class="danger" disabled>接続解除</button>
         <span class="spacer"></span>
         <button value="cancel" class="secondary">閉じる</button>
@@ -123,6 +124,21 @@
         <pre id="log"></pre>
       </details>
     </form>
+  </dialog>
+
+  <dialog id="trash-dialog">
+    <div class="dialog-card">
+      <div class="dialog-header">
+        <h2>ゴミ箱</h2>
+        <button id="close-trash" class="icon-button dark" aria-label="閉じる">×</button>
+      </div>
+      <div id="trash-list" class="trash-list"></div>
+      <div class="dialog-actions">
+        <button id="empty-trash" type="button" class="danger">ゴミ箱を空にする</button>
+        <span class="spacer"></span>
+        <button id="close-trash-bottom" type="button" class="secondary">閉じる</button>
+      </div>
+    </div>
   </dialog>
 
   <footer class="site-footer">

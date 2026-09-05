@@ -9,6 +9,7 @@ const elements = Object.fromEntries([
   "sync-indicator", "open-search", "close-search", "clear-search", "header-search", "app-title",
   "open-settings", "settings", "log", "new-body", "create", "create-status", "search",
   "list-status", "timeline", "editor", "edit-body", "edit-status", "save", "delete",
+  "open-trash", "trash-dialog", "close-trash", "close-trash-bottom", "trash-list", "empty-trash",
 ].map((id) => [id.replaceAll("-", "_"), document.querySelector(`#${id}`)]));
 
 let tokenClient;
@@ -56,6 +57,8 @@ function setBusy(value) {
   elements.create.disabled = value || !accessToken || !hasNewNoteContent();
   elements.save.disabled = value;
   elements.delete.disabled = value;
+  elements.open_trash.disabled = value || !accessToken;
+  elements.empty_trash.disabled = value || !accessToken || !notes.some(({ note }) => note.deletedAt !== null);
 }
 
 function hasNewNoteContent() {
@@ -74,6 +77,8 @@ function clearAccessToken(message = "Google Drive未接続") {
   elements.create.disabled = true;
   elements.save.disabled = true;
   elements.delete.disabled = true;
+  elements.open_trash.disabled = true;
+  elements.empty_trash.disabled = true;
 }
 
 function expireAccessToken() {
@@ -143,6 +148,7 @@ function authorize() {
       elements.revoke.disabled = false;
       elements.search.disabled = false;
       elements.open_search.disabled = false;
+      elements.open_trash.disabled = false;
       log("drive.file権限で認証しました。トークンはメモリにのみ保持します。");
       const action = pendingAction;
       pendingAction = undefined;
@@ -290,9 +296,9 @@ function renderTimeline() {
     const article = document.createElement("article");
     article.className = "note";
     article.tabIndex = 0;
-    const body = document.createElement("p");
     const combined = legacyCompatibleBody(item.note);
-    body.textContent = combined.length > 300 ? `${combined.slice(0, 300)}…` : combined;
+    const body = document.createElement("p");
+    appendLinkifiedText(body, combined.length > 300 ? `${combined.slice(0, 300)}…` : combined);
     const time = document.createElement("time");
     time.dateTime = new Date(item.note.updatedAt).toISOString();
     time.textContent = new Date(item.note.updatedAt).toLocaleString("ja-JP");
@@ -302,6 +308,95 @@ function renderTimeline() {
     elements.timeline.append(article);
   }
   if (!query) elements.timeline.scrollTop = elements.timeline.scrollHeight;
+}
+
+function appendLinkifiedText(container, text) {
+  const pattern = /https?:\/\/[^\s]+/gi;
+  let cursor = 0;
+  for (const match of text.matchAll(pattern)) {
+    container.append(document.createTextNode(text.slice(cursor, match.index)));
+    const url = match[0].replace(/[.,。、)）\]】]+$/, "");
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = url;
+    link.addEventListener("click", (event) => event.stopPropagation());
+    container.append(link, document.createTextNode(match[0].slice(url.length)));
+    cursor = match.index + match[0].length;
+  }
+  container.append(document.createTextNode(text.slice(cursor)));
+}
+
+function renderTrash() {
+  const deleted = notes
+    .filter(({ note }) => note.deletedAt !== null)
+    .sort((a, b) => b.note.deletedAt - a.note.deletedAt);
+  elements.trash_list.replaceChildren();
+  elements.empty_trash.disabled = deleted.length === 0 || busy;
+  if (deleted.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "ゴミ箱は空です。";
+    elements.trash_list.append(empty);
+    return;
+  }
+  for (const item of deleted) {
+    const card = document.createElement("article");
+    card.className = "trash-note";
+    const body = document.createElement("p");
+    appendLinkifiedText(body, legacyCompatibleBody(item.note));
+    const actions = document.createElement("div");
+    actions.className = "dialog-actions";
+    const restore = document.createElement("button");
+    restore.type = "button";
+    restore.className = "secondary";
+    restore.textContent = "復元";
+    restore.addEventListener("click", () => restoreNote(item));
+    const purge = document.createElement("button");
+    purge.type = "button";
+    purge.className = "danger";
+    purge.textContent = "完全に削除";
+    purge.addEventListener("click", () => purgeNote(item));
+    actions.append(restore, purge);
+    card.append(body, actions);
+    elements.trash_list.append(card);
+  }
+}
+
+async function restoreNote(item) {
+  setBusy(true);
+  try {
+    const note = { ...item.note, deletedAt: null, updatedAt: Date.now() };
+    item.metadata = await updateDriveFile(item, note);
+    item.note = note;
+    renderTrash();
+    renderTimeline();
+  } catch (error) {
+    window.alert(`復元に失敗しました: ${error.message}`);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function purgeNote(item, confirmed = false) {
+  if (!confirmed && !window.confirm("このメモを完全に削除しますか？ この操作は取り消せません。")) return;
+  setBusy(true);
+  try {
+    await driveFetch(`${DRIVE_FILES}/${item.metadata.id}`, { method: "DELETE" });
+    notes = notes.filter((candidate) => candidate !== item);
+    renderTrash();
+  } catch (error) {
+    window.alert(`完全削除に失敗しました: ${error.message}`);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function emptyTrash() {
+  const deleted = notes.filter(({ note }) => note.deletedAt !== null);
+  if (!deleted.length || !window.confirm("ゴミ箱内のすべてのメモを完全に削除しますか？")) return;
+  for (const item of deleted) await purgeNote(item, true);
 }
 
 function legacyCompatibleBody(note) {
@@ -409,6 +504,7 @@ async function saveSelected(deleted = false, deletionConfirmed = false) {
     selected.note = note;
     selected.metadata = metadata;
     renderTimeline();
+    renderTrash();
     elements.editor.close();
     log(`${deleted ? "論理削除" : "更新"}: ${note.id}`);
   } catch (error) {
@@ -426,6 +522,14 @@ elements.authorize.addEventListener("click", authorize);
 elements.revoke.addEventListener("click", revoke);
 elements.sync.addEventListener("click", refreshNotes);
 elements.open_settings.addEventListener("click", () => elements.settings.showModal());
+elements.open_trash.addEventListener("click", () => {
+  elements.settings.close();
+  renderTrash();
+  elements.trash_dialog.showModal();
+});
+elements.close_trash.addEventListener("click", () => elements.trash_dialog.close());
+elements.close_trash_bottom.addEventListener("click", () => elements.trash_dialog.close());
+elements.empty_trash.addEventListener("click", emptyTrash);
 function updateCreateButton() {
   elements.create.disabled = busy || !accessToken || !hasNewNoteContent();
 }
