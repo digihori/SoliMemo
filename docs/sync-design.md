@@ -16,6 +16,7 @@
 | `PENDING_UPLOAD` | 作成または更新をアップロード待ち | `SYNCED` / `CONFLICT` / `SYNC_ERROR` |
 | `SYNCED` | Roomと既知のDrive版が一致 | `PENDING_UPLOAD` / `PENDING_DELETE` |
 | `PENDING_DELETE` | 論理削除をDriveへ反映待ち | `SYNCED` / `CONFLICT` / `SYNC_ERROR` |
+| `PENDING_PURGE` | ゴミ箱からDrive・Roomの完全削除待ち | 物理削除 / 再試行 |
 | `CONFLICT` | ローカルとDriveが同じ基点から別々に更新 | 競合コピー作成後に`SYNCED` |
 | `SYNC_ERROR` | 認証・通信・形式などで同期失敗 | 原因解消後に直前の保留状態へ戻す |
 
@@ -56,6 +57,9 @@ Version 1では自動本文マージをしない。競合した両方の内容�
 - 初回は明示操作による双方向同期とし、送信後にDrive側ファイルを列挙する。
 - 競合時はローカル内容を新しいUUIDの競合コピーとして保存し、元のUUIDへDrive版を反映する。
 - 論理削除は`deletedAt`を含むMarkdownの更新として扱い、Drive上のファイルは物理削除しない。
+- 復元は`updatedAt`を変更せず、`deletedAt`だけを`null`へ戻す更新として同期する。
+- 復元は`PENDING_RESTORE`として通常編集と区別し、Drive側の削除更新によるバージョン差を競合とせず復元内容を優先する。
+- 完全削除はDriveファイルの削除に成功した後でRoomの行を削除する。失敗時は`PENDING_PURGE`を保持して再試行する。
 - `SYNC_ERROR`は次回同期時の再試行対象にする。
 
 ## 今後決める事項

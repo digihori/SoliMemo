@@ -1,5 +1,6 @@
 package com.digihori.solimemo
 
+import android.content.Intent
 import android.os.Bundle
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
@@ -51,19 +52,42 @@ import org.commonmark.renderer.html.HtmlRenderer
 import com.digihori.solimemo.ui.notes.NoteEditorScreen
 import com.digihori.solimemo.ui.notes.NotesViewModel
 import com.digihori.solimemo.ui.notes.TimelineContent
+import com.digihori.solimemo.ui.notes.TrashScreen
 import com.digihori.solimemo.ui.sync.DriveSyncAction
 import java.net.URL
 
 class MainActivity : ComponentActivity() {
+    private var sharedText by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { SoliMemoApp() }
+        sharedText = intent.sharedMemoText()
+        setContent {
+            SoliMemoApp(
+                sharedText = sharedText,
+                onSharedTextConsumed = { sharedText = null },
+            )
+        }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        sharedText = intent.sharedMemoText()
+    }
+}
+
+private fun Intent.sharedMemoText(): String? {
+    if (action != Intent.ACTION_SEND || type?.startsWith("text/") != true) return null
+    val subject = getStringExtra(Intent.EXTRA_SUBJECT)?.trim().orEmpty()
+    val text = getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.trim().orEmpty()
+    return listOf(subject, text).filter(String::isNotEmpty).distinct().joinToString("\n\n").ifEmpty { null }
 }
 
 private enum class Screen {
     HOME,
     NOTE_EDITOR,
+    TRASH,
     WEB_INFORMATION,
     PRIVACY_POLICY,
     VERSION_INFORMATION,
@@ -72,7 +96,10 @@ private enum class Screen {
 private val SoliMemoPrimary = Color(0xFF3949AB)
 
 @Composable
-fun SoliMemoApp() {
+fun SoliMemoApp(
+    sharedText: String? = null,
+    onSharedTextConsumed: () -> Unit = {},
+) {
     var screen by remember { mutableStateOf(Screen.HOME) }
     var selectedNoteId by remember { mutableStateOf<String?>(null) }
     var syncStatus by remember { mutableStateOf<String?>(null) }
@@ -80,6 +107,10 @@ fun SoliMemoApp() {
     val notesViewModel: NotesViewModel = viewModel(
         factory = NotesViewModel.Factory(application.noteRepository),
     )
+
+    LaunchedEffect(sharedText) {
+        if (sharedText != null) screen = Screen.HOME
+    }
 
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -93,6 +124,8 @@ fun SoliMemoApp() {
                         screen = Screen.NOTE_EDITOR
                     },
                     onNavigate = { screen = it },
+                    sharedText = sharedText,
+                    onSharedTextConsumed = onSharedTextConsumed,
                 )
                 Screen.NOTE_EDITOR -> selectedNoteId?.let { noteId ->
                     NoteEditorScreen(
@@ -102,6 +135,10 @@ fun SoliMemoApp() {
                         onBack = { screen = Screen.HOME },
                     )
                 }
+                Screen.TRASH -> TrashScreen(
+                    viewModel = notesViewModel,
+                    onBack = { screen = Screen.HOME },
+                )
                 Screen.WEB_INFORMATION -> DetailScreen(
                     title = stringResource(R.string.web_information),
                     onBack = { screen = Screen.HOME },
@@ -127,6 +164,8 @@ private fun HomeScreen(
     onSyncStatusChange: (String) -> Unit,
     onOpenNote: (String) -> Unit,
     onNavigate: (Screen) -> Unit,
+    sharedText: String?,
+    onSharedTextConsumed: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var searchMode by remember { mutableStateOf(false) }
@@ -205,6 +244,13 @@ private fun HomeScreen(
                                 onDismissRequest = { menuExpanded = false },
                             ) {
                                 DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.trash)) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onNavigate(Screen.TRASH)
+                                    },
+                                )
+                                DropdownMenuItem(
                                     text = { Text(stringResource(R.string.web_information)) },
                                     onClick = {
                                         menuExpanded = false
@@ -236,6 +282,8 @@ private fun HomeScreen(
             viewModel = viewModel,
             syncStatus = syncStatus,
             composerVisible = !searchMode,
+            sharedText = sharedText,
+            onSharedTextConsumed = onSharedTextConsumed,
             onOpenNote = onOpenNote,
             modifier = Modifier.padding(contentPadding),
         )

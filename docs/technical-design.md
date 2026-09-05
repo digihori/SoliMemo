@@ -35,6 +35,8 @@ Repository
 - ドメイン層はAndroid UI、Room、Drive API固有の型へ依存させない。
 - 同期処理はRepositoryの通常CRUDから分離し、再試行可能にする。
 - Web版も同じMarkdown形式と同期規約に従う。
+- Android版は他アプリからの`ACTION_SEND`（`text/plain`）を新規メモの下書きとして受け取る。
+- メモ本文中のHTTP(S) URLは保存形式を変更せず、UI表示時にリンク化する。
 - Phase 0では単一`app`モジュールとし、ビルド負荷が正当化できるまでモジュールを増やさない。
 
 ## パッケージ方針
@@ -68,4 +70,3 @@ com.digihori.solimemo
 - 全文検索を通常SQLからFTSへ切り替える時期
 
 これらはPhase 1以降の検証結果をADRとして記録する。
-

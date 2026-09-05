@@ -24,6 +24,8 @@ class NoteRepository(
 
     fun observeNote(id: String): Flow<NoteEntity?> = noteDao.observeById(id)
 
+    fun observeTrash(): Flow<List<NoteEntity>> = noteDao.observeTrash()
+
     suspend fun hasPendingChanges(): Boolean = noteDao.findPendingSync().isNotEmpty()
 
     suspend fun create(title: String, body: String): String? {
@@ -76,11 +78,37 @@ class NoteRepository(
         noteDao.upsert(
             existing.copy(
                 deletedAtEpochMillis = now,
-                updatedAtEpochMillis = now,
                 syncState = SyncState.PENDING_DELETE,
                 lastSyncError = null,
             ),
         )
+        mutableLocalChanges.tryEmit(Unit)
+    }
+
+    suspend fun restore(id: String) {
+        val existing = noteDao.findById(id) ?: return
+        noteDao.upsert(
+            existing.copy(
+                deletedAtEpochMillis = null,
+                syncState = if (existing.driveFileId == null) SyncState.LOCAL_ONLY else SyncState.PENDING_RESTORE,
+                lastSyncError = null,
+            ),
+        )
+        mutableLocalChanges.tryEmit(Unit)
+    }
+
+    suspend fun purge(id: String) {
+        val existing = noteDao.findById(id) ?: return
+        noteDao.upsert(existing.copy(syncState = SyncState.PENDING_PURGE, lastSyncError = null))
+        mutableLocalChanges.tryEmit(Unit)
+    }
+
+    suspend fun emptyTrash() {
+        val deleted = noteDao.findDeleted()
+        if (deleted.isEmpty()) return
+        deleted.forEach { note ->
+            noteDao.upsert(note.copy(syncState = SyncState.PENDING_PURGE, lastSyncError = null))
+        }
         mutableLocalChanges.tryEmit(Unit)
     }
 }

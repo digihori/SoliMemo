@@ -1,5 +1,8 @@
 <resources>
     <string name="app_name">SoliMemo</string>
+    <string name="trash">ゴミ箱</string>
+    <string name="share_note">メモを共有</string>
+    <string name="delete_note">メモを削除</string>
     <string name="web_information">Web版について</string>
     <string name="web_information_heading">PCのブラウザでも利用できます</string>
     <string name="web_information_description">Web版はPCブラウザ向けです。Androidアプリと同じGoogleアカウントでGoogle Driveへ接続すると、同じメモを参照・編集できます。</string>

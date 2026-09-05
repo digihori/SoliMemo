@@ -81,6 +81,7 @@ fun DriveSyncAction(
                     if (summary.downloaded > 0) add("取得 ${summary.downloaded}件")
                     if (summary.conflicts > 0) add("競合 ${summary.conflicts}件")
                     if (summary.errors > 0) add("エラー ${summary.errors}件")
+                    if (summary.purged > 0) add("完全削除 ${summary.purged}件")
                 }
                 onStatusChange(
                     if (details.isEmpty()) "Drive同期済み"

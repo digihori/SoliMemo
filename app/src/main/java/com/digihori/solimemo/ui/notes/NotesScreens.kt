@@ -1,5 +1,6 @@
 package com.digihori.solimemo.ui.notes
 
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -40,10 +42,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.digihori.solimemo.R
 import com.digihori.solimemo.data.local.NoteEntity
 import kotlinx.coroutines.flow.Flow
 import java.text.DateFormat
@@ -56,6 +66,8 @@ fun TimelineContent(
     viewModel: NotesViewModel,
     syncStatus: String?,
     composerVisible: Boolean,
+    sharedText: String?,
+    onSharedTextConsumed: () -> Unit,
     onOpenNote: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -65,6 +77,13 @@ fun TimelineContent(
     val density = LocalDensity.current
     val imeBottom = WindowInsets.ime.getBottom(density)
     var draftBody by remember { mutableStateOf("") }
+
+    LaunchedEffect(sharedText) {
+        sharedText?.takeIf(String::isNotBlank)?.let {
+            draftBody = it
+            onSharedTextConsumed()
+        }
+    }
 
     LaunchedEffect(notes.size, query, imeBottom) {
         if (notes.isNotEmpty()) listState.scrollToItem(notes.lastIndex)
@@ -169,11 +188,9 @@ private fun NoteCard(note: NoteEntity, onClick: () -> Unit) {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                legacyCompatibleBody(note),
+            LinkifiedText(
+                text = legacyCompatibleBody(note),
                 maxLines = 6,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyLarge,
             )
             Text(
                 DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
@@ -184,6 +201,136 @@ private fun NoteCard(note: NoteEntity, onClick: () -> Unit) {
         }
     }
 }
+
+@Composable
+private fun LinkifiedText(text: String, maxLines: Int = Int.MAX_VALUE) {
+    val annotated = remember(text) {
+        buildAnnotatedString {
+            append(text)
+            URL_PATTERN.findAll(text).forEach { match ->
+                val url = match.value.trimEnd('.', ',', '。', '、', ')', '）', ']', '】')
+                if (url.isNotEmpty()) {
+                    addLink(
+                        LinkAnnotation.Url(
+                            url = url,
+                            styles = TextLinkStyles(
+                                style = SpanStyle(
+                                    color = Primary,
+                                    textDecoration = TextDecoration.Underline,
+                                ),
+                            ),
+                        ),
+                        start = match.range.first,
+                        end = match.range.first + url.length,
+                    )
+                }
+            }
+        }
+    }
+    Text(
+        text = annotated,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+        style = MaterialTheme.typography.bodyLarge,
+    )
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+fun TrashScreen(
+    viewModel: NotesViewModel,
+    onBack: () -> Unit,
+) {
+    val notes by viewModel.trashNotes.collectAsStateWithLifecycle()
+    var purgeTarget by remember { mutableStateOf<NoteEntity?>(null) }
+    var confirmEmpty by remember { mutableStateOf(false) }
+    BackHandler(onBack = onBack)
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("ゴミ箱") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Primary,
+                    navigationIconContentColor = Color.White,
+                    titleContentColor = Color.White,
+                    actionIconContentColor = Color.White,
+                ),
+                navigationIcon = { IconButton(onClick = onBack) { Text("←") } },
+                actions = {
+                    TextButton(onClick = { confirmEmpty = true }, enabled = notes.isNotEmpty()) {
+                        Text("すべて削除", color = Color.White)
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        if (notes.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+                Text(
+                    "ゴミ箱は空です。",
+                    modifier = Modifier.align(androidx.compose.ui.Alignment.Center),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(notes, key = NoteEntity::id) { note ->
+                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            LinkifiedText(legacyCompatibleBody(note), maxLines = 6)
+                            Text(
+                                DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                                    .format(Date(note.updatedAtEpochMillis)),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                TextButton(onClick = { viewModel.restore(note.id) }) { Text("復元") }
+                                TextButton(onClick = { purgeTarget = note }) { Text("完全に削除") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    purgeTarget?.let { note ->
+        AlertDialog(
+            onDismissRequest = { purgeTarget = null },
+            title = { Text("完全に削除しますか？") },
+            text = { Text("この操作は取り消せません。Drive上のメモも削除されます。") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.purge(note.id); purgeTarget = null }) { Text("削除") }
+            },
+            dismissButton = { TextButton(onClick = { purgeTarget = null }) { Text("キャンセル") } },
+        )
+    }
+    if (confirmEmpty) {
+        AlertDialog(
+            onDismissRequest = { confirmEmpty = false },
+            title = { Text("ゴミ箱を空にしますか？") },
+            text = { Text("ゴミ箱内のすべてのメモをDriveからも完全に削除します。この操作は取り消せません。") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.emptyTrash(); confirmEmpty = false }) { Text("すべて削除") }
+            },
+            dismissButton = { TextButton(onClick = { confirmEmpty = false }) { Text("キャンセル") } },
+        )
+    }
+}
+
+private val URL_PATTERN = Regex("https?://[^\\s]+", RegexOption.IGNORE_CASE)
 
 private fun legacyCompatibleBody(note: NoteEntity): String = buildString {
     note.title?.takeIf(String::isNotBlank)?.let {
@@ -201,6 +348,7 @@ fun NoteEditorScreen(
     viewModel: NotesViewModel,
     onBack: () -> Unit,
 ) {
+    val context = LocalContext.current
     val note by noteFlow.collectAsStateWithLifecycle(initialValue = null)
     var body by remember(noteId) { mutableStateOf("") }
     var initialized by remember(noteId) { mutableStateOf(false) }
@@ -236,7 +384,29 @@ fun NoteEditorScreen(
                     IconButton(onClick = ::saveAndBack) { Text("←") }
                 },
                 actions = {
-                    IconButton(onClick = { showDeleteConfirmation = true }) { Text("削除") }
+                    IconButton(
+                        onClick = {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, body)
+                            }
+                            context.startActivity(
+                                Intent.createChooser(shareIntent, context.getString(R.string.share_note)),
+                            )
+                        },
+                        enabled = body.isNotBlank(),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_share_24),
+                            contentDescription = context.getString(R.string.share_note),
+                        )
+                    }
+                    IconButton(onClick = { showDeleteConfirmation = true }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_delete_24),
+                            contentDescription = context.getString(R.string.delete_note),
+                        )
+                    }
                 },
             )
         },
@@ -274,7 +444,7 @@ fun NoteEditorScreen(
         AlertDialog(
             onDismissRequest = { showDeleteConfirmation = false },
             title = { Text("メモを削除しますか？") },
-            text = { Text("メモは論理削除され、通常の一覧には表示されなくなります。") },
+            text = { Text("メモはゴミ箱へ移動し、通常の一覧には表示されなくなります。") },
             confirmButton = {
                 TextButton(onClick = { viewModel.delete(noteId, onBack) }) { Text("削除") }
             },

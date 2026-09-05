@@ -5,7 +5,8 @@ enum class SyncState {
     SYNCED,
     PENDING_UPLOAD,
     PENDING_DELETE,
+    PENDING_RESTORE,
+    PENDING_PURGE,
     CONFLICT,
     SYNC_ERROR,
 }
-

@@ -26,6 +26,9 @@ class NotesViewModel(
         .flatMapLatest(repository::observeNotes)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val trashNotes = repository.observeTrash()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     fun setQuery(value: String) {
         query.value = value
     }
@@ -57,6 +60,18 @@ class NotesViewModel(
             repository.delete(id)
             onDeleted()
         }
+    }
+
+    fun restore(id: String) {
+        viewModelScope.launch { repository.restore(id) }
+    }
+
+    fun purge(id: String) {
+        viewModelScope.launch { repository.purge(id) }
+    }
+
+    fun emptyTrash() {
+        viewModelScope.launch { repository.emptyTrash() }
     }
 
     class Factory(private val repository: NoteRepository) : ViewModelProvider.Factory {

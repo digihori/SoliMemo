@@ -68,6 +68,51 @@ class DriveSyncEngineTest {
         assertEquals(SyncState.SYNC_ERROR, dao.findById("local")?.syncState)
     }
 
+    @Test
+    fun restoreOverridesRemoteDeletionWithoutCreatingConflictCopy() = runBlocking {
+        val dao = SyncFakeDao()
+        val drive = SyncFakeDrive()
+        val metadata = DriveFileMetadata("drive-local", "local.md", "2", null)
+        drive.addRemote(MarkdownNote("local", null, "body", 100, 100, 150), metadata)
+        dao.upsert(
+            note().copy(
+                syncState = SyncState.PENDING_RESTORE,
+                driveFileId = metadata.id,
+                driveVersion = "1",
+            ),
+        )
+
+        val result = DriveSyncEngine(dao, drive).synchronize()
+
+        assertEquals(0, result.conflicts)
+        assertEquals(1, result.uploaded)
+        assertEquals(SyncState.SYNCED, dao.findById("local")?.syncState)
+        val downloaded = drive.downloadNoteFile(drive.listMarkdownFiles().single())
+        assertEquals(null, MarkdownNoteCodec.decode(downloaded.content).deletedAtEpochMillis)
+    }
+
+    @Test
+    fun permanentlyDeletesDriveAndLocalNote() = runBlocking {
+        val dao = SyncFakeDao()
+        val drive = SyncFakeDrive()
+        val metadata = DriveFileMetadata("drive-local", "local.md", "1", null)
+        drive.addRemote(MarkdownNote("local", null, "body", 100, 200, 150), metadata)
+        dao.upsert(
+            note().copy(
+                deletedAtEpochMillis = 150,
+                syncState = SyncState.PENDING_PURGE,
+                driveFileId = metadata.id,
+                driveVersion = metadata.version,
+            ),
+        )
+
+        val result = DriveSyncEngine(dao, drive).synchronize()
+
+        assertEquals(1, result.purged)
+        assertEquals(null, dao.findById("local"))
+        assertEquals(emptyList<DriveFileMetadata>(), drive.listMarkdownFiles())
+    }
+
     private fun note() = NoteEntity(
         "local", null, "body", 100, 100, null, SyncState.LOCAL_ONLY, null, null, null,
     )
@@ -99,17 +144,27 @@ private class SyncFakeDrive : DriveDataSource {
 
     override fun downloadNoteFile(metadata: DriveFileMetadata) = files.getValue(metadata.id)
     override fun getFileMetadata(fileId: String) = files.getValue(fileId).metadata
+    override fun deleteNoteFile(fileId: String) {
+        files.remove(fileId)
+    }
 }
 
 private class SyncFakeDao : NoteDao {
     private val notes = MutableStateFlow<List<NoteEntity>>(emptyList())
     override fun observeTimeline(): Flow<List<NoteEntity>> = notes
     override fun observeSearch(query: String): Flow<List<NoteEntity>> = notes
+    override fun observeTrash(): Flow<List<NoteEntity>> = notes.map { list ->
+        list.filter { it.deletedAtEpochMillis != null && it.syncState != SyncState.PENDING_PURGE }
+    }
     override fun observeById(id: String): Flow<NoteEntity?> = notes.map { list -> list.firstOrNull { it.id == id } }
     override suspend fun findById(id: String) = notes.value.firstOrNull { it.id == id }
     override suspend fun findByDriveFileId(driveFileId: String) =
         notes.value.firstOrNull { it.driveFileId == driveFileId }
     override suspend fun findPendingSync() = notes.value.filter { it.syncState != SyncState.SYNCED }
+    override suspend fun findDeleted() = notes.value.filter { it.deletedAtEpochMillis != null }
+    override suspend fun deleteById(id: String) {
+        notes.value = notes.value.filterNot { it.id == id }
+    }
     override suspend fun upsert(note: NoteEntity) {
         notes.value = notes.value.filterNot { it.id == note.id } + note
     }

@@ -59,7 +59,33 @@ class NoteRepositoryTest {
 
         val deleted = dao.findById("fixed-id")!!
         assertEquals(3_000L, deleted.deletedAtEpochMillis)
+        assertEquals(500L, deleted.updatedAtEpochMillis)
         assertEquals(SyncState.PENDING_DELETE, deleted.syncState)
+    }
+
+    @Test
+    fun restoreClearsDeletionAndMarksDriveNotePending() = runBlocking {
+        dao.upsert(
+            note(driveFileId = "drive-id", syncState = SyncState.SYNCED)
+                .copy(deletedAtEpochMillis = 900L),
+        )
+        now = 4_000L
+
+        repository.restore("fixed-id")
+
+        val restored = dao.findById("fixed-id")!!
+        assertNull(restored.deletedAtEpochMillis)
+        assertEquals(500L, restored.updatedAtEpochMillis)
+        assertEquals(SyncState.PENDING_RESTORE, restored.syncState)
+    }
+
+    @Test
+    fun purgeMarksDeletedNoteForPermanentDeletion() = runBlocking {
+        dao.upsert(note().copy(deletedAtEpochMillis = 900L))
+
+        repository.purge("fixed-id")
+
+        assertEquals(SyncState.PENDING_PURGE, dao.findById("fixed-id")?.syncState)
     }
 
     private fun note(
@@ -93,6 +119,12 @@ private class FakeNoteDao : NoteDao {
         }.sortedByDescending { it.updatedAtEpochMillis }
     }
 
+    override fun observeTrash(): Flow<List<NoteEntity>> = notes.map { values ->
+        values.filter {
+            it.deletedAtEpochMillis != null && it.syncState != SyncState.PENDING_PURGE
+        }.sortedByDescending { it.deletedAtEpochMillis }
+    }
+
     override fun observeById(id: String): Flow<NoteEntity?> =
         notes.map { values -> values.firstOrNull { it.id == id } }
 
@@ -106,7 +138,15 @@ private class FakeNoteDao : NoteDao {
             SyncState.LOCAL_ONLY,
             SyncState.PENDING_UPLOAD,
             SyncState.PENDING_DELETE,
+            SyncState.PENDING_PURGE,
         )
+    }
+
+    override suspend fun findDeleted(): List<NoteEntity> =
+        notes.value.filter { it.deletedAtEpochMillis != null }
+
+    override suspend fun deleteById(id: String) {
+        notes.value = notes.value.filterNot { it.id == id }
     }
 
     override suspend fun upsert(note: NoteEntity) {

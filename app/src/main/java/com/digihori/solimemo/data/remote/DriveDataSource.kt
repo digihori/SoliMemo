@@ -18,4 +18,5 @@ interface DriveDataSource {
     fun updateNoteFile(fileId: String, content: String): DriveFileMetadata
     fun downloadNoteFile(metadata: DriveFileMetadata): DriveDownloadedFile
     fun getFileMetadata(fileId: String): DriveFileMetadata
+    fun deleteNoteFile(fileId: String)
 }

@@ -14,6 +14,7 @@ data class SyncSummary(
     val downloaded: Int,
     val conflicts: Int,
     val errors: Int,
+    val purged: Int,
 )
 
 class DriveSyncEngine(
@@ -26,15 +27,39 @@ class DriveSyncEngine(
         var downloaded = 0
         var conflicts = 0
         var errors = 0
+        var purged = 0
 
         val pending = noteDao.findPendingSync()
         pending.forEachIndexed { index, note ->
             onProgress("Driveへ送信中 ${index + 1}/${pending.size}")
-            runCatching { upload(note) }
-                .onSuccess { didUpload -> if (didUpload) uploaded++ }
+            runCatching {
+                if (note.syncState == SyncState.PENDING_PURGE) {
+                    purge(note)
+                    true
+                } else {
+                    upload(note)
+                }
+            }
+                .onSuccess { changed ->
+                    if (note.syncState == SyncState.PENDING_PURGE && changed) purged++
+                    else if (changed) uploaded++
+                }
                 .onFailure {
                     errors++
-                    noteDao.upsert(note.copy(syncState = SyncState.SYNC_ERROR, lastSyncError = "upload_failed"))
+                    noteDao.upsert(
+                        note.copy(
+                            syncState = when (note.syncState) {
+                                SyncState.PENDING_PURGE -> SyncState.PENDING_PURGE
+                                SyncState.PENDING_RESTORE -> SyncState.PENDING_RESTORE
+                                else -> SyncState.SYNC_ERROR
+                            },
+                            lastSyncError = if (note.syncState == SyncState.PENDING_PURGE) {
+                                "purge_failed"
+                            } else {
+                                "upload_failed"
+                            },
+                        ),
+                    )
                 }
         }
 
@@ -42,6 +67,9 @@ class DriveSyncEngine(
         files.forEachIndexed { index, metadata ->
             onProgress("Driveから確認中 ${index + 1}/${files.size}")
             val existingByFile = noteDao.findByDriveFileId(metadata.id)
+            if (existingByFile?.syncState == SyncState.PENDING_RESTORE) {
+                return@forEachIndexed
+            }
             if (
                 existingByFile != null &&
                 existingByFile.driveVersion == metadata.version &&
@@ -74,7 +102,12 @@ class DriveSyncEngine(
                     }
                 }
         }
-        return SyncSummary(uploaded, downloaded, conflicts, errors)
+        return SyncSummary(uploaded, downloaded, conflicts, errors, purged)
+    }
+
+    private suspend fun purge(note: NoteEntity) {
+        note.driveFileId?.let(drive::deleteNoteFile)
+        noteDao.deleteById(note.id)
     }
 
     private suspend fun upload(note: NoteEntity): Boolean {
@@ -83,7 +116,11 @@ class DriveSyncEngine(
             drive.createNoteFile(note.id, content)
         } else {
             val current = drive.getFileMetadata(note.driveFileId)
-            if (note.driveVersion != null && current.version != note.driveVersion) {
+            if (
+                note.syncState != SyncState.PENDING_RESTORE &&
+                note.driveVersion != null &&
+                current.version != note.driveVersion
+            ) {
                 return false
             }
             drive.updateNoteFile(note.driveFileId, content)

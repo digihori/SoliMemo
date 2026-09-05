@@ -53,6 +53,10 @@ class DriveRestClient(private val accessToken: String) : DriveDataSource {
     override fun getFileMetadata(fileId: String): DriveFileMetadata =
         getMetadata(fileId).toDriveMetadata()
 
+    override fun deleteNoteFile(fileId: String) {
+        request("DELETE", "$FILES_ENDPOINT/$fileId")
+    }
+
     fun runProofOfConcept(onStep: (String) -> Unit): FileMetadata {
         onStep("1/5 SoliMemoフォルダを確認しています")
         val rootFolderId = findOrCreateFolder("SoliMemo", "root")

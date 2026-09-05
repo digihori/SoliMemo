@@ -20,6 +20,16 @@ interface NoteDao {
     )
     fun observeSearch(query: String): Flow<List<NoteEntity>>
 
+    @Query(
+        """
+        SELECT * FROM notes
+        WHERE deletedAtEpochMillis IS NOT NULL
+          AND syncState != 'PENDING_PURGE'
+        ORDER BY deletedAtEpochMillis DESC
+        """,
+    )
+    fun observeTrash(): Flow<List<NoteEntity>>
+
     @Query("SELECT * FROM notes WHERE id = :id LIMIT 1")
     fun observeById(id: String): Flow<NoteEntity?>
 
@@ -29,7 +39,7 @@ interface NoteDao {
     @Query(
         """
         SELECT * FROM notes
-        WHERE syncState IN ('LOCAL_ONLY', 'PENDING_UPLOAD', 'PENDING_DELETE', 'SYNC_ERROR')
+        WHERE syncState IN ('LOCAL_ONLY', 'PENDING_UPLOAD', 'PENDING_DELETE', 'PENDING_RESTORE', 'PENDING_PURGE', 'SYNC_ERROR')
         ORDER BY updatedAtEpochMillis ASC
         """,
     )
@@ -40,4 +50,10 @@ interface NoteDao {
 
     @Upsert
     suspend fun upsert(note: NoteEntity)
+
+    @Query("SELECT * FROM notes WHERE deletedAtEpochMillis IS NOT NULL")
+    suspend fun findDeleted(): List<NoteEntity>
+
+    @Query("DELETE FROM notes WHERE id = :id")
+    suspend fun deleteById(id: String)
 }
