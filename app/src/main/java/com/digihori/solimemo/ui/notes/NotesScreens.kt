@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -349,6 +350,8 @@ fun NoteEditorScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    val shareNoteLabel = stringResource(R.string.share_note)
+    val deleteNoteLabel = stringResource(R.string.delete_note)
     val note by noteFlow.collectAsStateWithLifecycle(initialValue = null)
     var body by remember(noteId) { mutableStateOf("") }
     var initialized by remember(noteId) { mutableStateOf(false) }
@@ -391,20 +394,20 @@ fun NoteEditorScreen(
                                 putExtra(Intent.EXTRA_TEXT, body)
                             }
                             context.startActivity(
-                                Intent.createChooser(shareIntent, context.getString(R.string.share_note)),
+                                Intent.createChooser(shareIntent, shareNoteLabel),
                             )
                         },
                         enabled = body.isNotBlank(),
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_share_24),
-                            contentDescription = context.getString(R.string.share_note),
+                            contentDescription = shareNoteLabel,
                         )
                     }
                     IconButton(onClick = { showDeleteConfirmation = true }) {
                         Icon(
                             painter = painterResource(R.drawable.ic_delete_24),
-                            contentDescription = context.getString(R.string.delete_note),
+                            contentDescription = deleteNoteLabel,
                         )
                     }
                 },
