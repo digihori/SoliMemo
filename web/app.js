@@ -346,6 +346,9 @@ function renderTrash() {
     card.className = "trash-note";
     const body = document.createElement("p");
     appendLinkifiedText(body, legacyCompatibleBody(item.note));
+    const time = document.createElement("time");
+    time.dateTime = new Date(item.note.updatedAt).toISOString();
+    time.textContent = new Date(item.note.updatedAt).toLocaleString("ja-JP");
     const actions = document.createElement("div");
     actions.className = "dialog-actions";
     const restore = document.createElement("button");
@@ -359,7 +362,7 @@ function renderTrash() {
     purge.textContent = "完全に削除";
     purge.addEventListener("click", () => purgeNote(item));
     actions.append(restore, purge);
-    card.append(body, actions);
+    card.append(body, time, actions);
     elements.trash_list.append(card);
   }
 }
@@ -367,7 +370,7 @@ function renderTrash() {
 async function restoreNote(item) {
   setBusy(true);
   try {
-    const note = { ...item.note, deletedAt: null, updatedAt: Date.now() };
+    const note = { ...item.note, deletedAt: null };
     item.metadata = await updateDriveFile(item, note);
     item.note = note;
     renderTrash();
@@ -499,7 +502,14 @@ async function saveSelected(deleted = false, deletionConfirmed = false) {
   setBusy(true);
   setStatus(elements.edit_status, deleted ? "削除を同期しています…" : "保存しています…");
   try {
-    const note = { ...selected.note, title: null, body, updatedAt: Date.now(), deletedAt: deleted ? Date.now() : null };
+    const now = Date.now();
+    const note = {
+      ...selected.note,
+      title: null,
+      body,
+      updatedAt: deleted ? selected.note.updatedAt : now,
+      deletedAt: deleted ? now : null,
+    };
     const metadata = await updateDriveFile(selected, note);
     selected.note = note;
     selected.metadata = metadata;
