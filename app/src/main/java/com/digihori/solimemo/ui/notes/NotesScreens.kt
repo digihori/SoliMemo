@@ -3,6 +3,9 @@ package com.digihori.solimemo.ui.notes
 import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -179,6 +182,9 @@ private fun isSyncProblem(status: String): Boolean =
 
 @Composable
 private fun NoteCard(note: NoteEntity, onClick: () -> Unit) {
+    val text = legacyCompatibleBody(note)
+    val urls = remember(text) { extractUrls(text) }
+    val preview = remember(text) { removeUrls(text) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -189,10 +195,31 @@ private fun NoteCard(note: NoteEntity, onClick: () -> Unit) {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            LinkifiedText(
-                text = legacyCompatibleBody(note),
-                maxLines = 6,
-            )
+            if (preview.isNotBlank()) {
+                Text(
+                    text = preview,
+                    maxLines = 6,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+            urls.firstOrNull()?.let { url ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        LinkifiedText(text = url, maxLines = 1)
+                    }
+                    if (urls.size > 1) {
+                        Text(
+                            "ほか${urls.size - 1}件",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
             Text(
                 DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
                     .format(Date(note.updatedAtEpochMillis)),
@@ -209,7 +236,7 @@ private fun LinkifiedText(text: String, maxLines: Int = Int.MAX_VALUE) {
         buildAnnotatedString {
             append(text)
             URL_PATTERN.findAll(text).forEach { match ->
-                val url = match.value.trimEnd('.', ',', '。', '、', ')', '）', ']', '】')
+                val url = normalizeUrl(match.value)
                 if (url.isNotEmpty()) {
                     addLink(
                         LinkAnnotation.Url(
@@ -333,6 +360,23 @@ fun TrashScreen(
 
 private val URL_PATTERN = Regex("https?://[^\\s]+", RegexOption.IGNORE_CASE)
 
+private fun normalizeUrl(value: String): String =
+    value.trimEnd('.', ',', '。', '、', ')', '）', ']', '】')
+
+private fun extractUrls(text: String): List<String> =
+    URL_PATTERN.findAll(text).map { normalizeUrl(it.value) }.filter(String::isNotEmpty).distinct().toList()
+
+private fun removeUrls(text: String): String = buildString {
+    var cursor = 0
+    URL_PATTERN.findAll(text).forEach { match ->
+        append(text, cursor, match.range.first)
+        val url = normalizeUrl(match.value)
+        append(match.value.drop(url.length))
+        cursor = match.range.last + 1
+    }
+    append(text, cursor, text.length)
+}.trim().replace(Regex("\\n{3,}"), "\n\n")
+
 private fun legacyCompatibleBody(note: NoteEntity): String = buildString {
     note.title?.takeIf(String::isNotBlank)?.let {
         append(it)
@@ -352,10 +396,13 @@ fun NoteEditorScreen(
     val context = LocalContext.current
     val shareNoteLabel = stringResource(R.string.share_note)
     val deleteNoteLabel = stringResource(R.string.delete_note)
+    val editNoteLabel = stringResource(R.string.edit_note)
+    val finishEditingLabel = stringResource(R.string.finish_editing)
     val note by noteFlow.collectAsStateWithLifecycle(initialValue = null)
     var body by remember(noteId) { mutableStateOf("") }
     var initialized by remember(noteId) { mutableStateOf(false) }
     var dirty by remember(noteId) { mutableStateOf(false) }
+    var editing by remember(noteId) { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
 
     LaunchedEffect(note?.id) {
@@ -371,12 +418,19 @@ fun NoteEditorScreen(
         if (initialized && dirty) viewModel.flushSave(noteId, "", body)
         onBack()
     }
-    BackHandler(onBack = ::saveAndBack)
+    fun finishEditing() {
+        if (initialized && dirty) viewModel.flushSave(noteId, "", body)
+        dirty = false
+        editing = false
+    }
+    BackHandler {
+        if (editing) finishEditing() else saveAndBack()
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("メモを編集") },
+                title = { Text(if (editing) "メモを編集" else "メモ") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Primary,
                     navigationIconContentColor = Color.White,
@@ -404,6 +458,14 @@ fun NoteEditorScreen(
                             contentDescription = shareNoteLabel,
                         )
                     }
+                    IconButton(onClick = { if (editing) finishEditing() else editing = true }) {
+                        Icon(
+                            painter = painterResource(
+                                if (editing) R.drawable.ic_done_24 else R.drawable.ic_edit_24,
+                            ),
+                            contentDescription = if (editing) finishEditingLabel else editNoteLabel,
+                        )
+                    }
                     IconButton(onClick = { showDeleteConfirmation = true }) {
                         Icon(
                             painter = painterResource(R.drawable.ic_delete_24),
@@ -422,24 +484,36 @@ fun NoteEditorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            OutlinedTextField(
-                value = body,
-                onValueChange = {
-                    body = it
-                    dirty = true
-                    viewModel.scheduleSave(noteId, "", body)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                label = { Text("メモ") },
-            )
-            HorizontalDivider()
-            Text(
-                "入力内容は自動保存されます",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (editing) {
+                OutlinedTextField(
+                    value = body,
+                    onValueChange = {
+                        body = it
+                        dirty = true
+                        viewModel.scheduleSave(noteId, "", body)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    label = { Text("メモ") },
+                )
+                HorizontalDivider()
+                Text(
+                    "入力内容は自動保存されます",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                SelectionContainer {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        LinkifiedText(text = body)
+                    }
+                }
+            }
         }
     }
 
