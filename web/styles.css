@@ -163,6 +163,9 @@ button.danger { background: #b3261e; }
 .note p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; line-height: 1.55; }
 .note time { display: block; margin-top: 10px; color: #5f6368; font-size: .78rem; }
 .note a, .trash-note a { color: #3949ab; text-decoration: underline; }
+.note-url-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-width: 0; }
+.note-url { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-url-row span { flex: none; color: #5f6368; font-size: .78rem; }
 .trash-list { display: grid; gap: 10px; max-height: 60vh; overflow-y: auto; }
 .trash-note { border: 1px solid #dfe1e5; border-radius: 10px; padding: 12px; }
 .trash-note p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -189,6 +192,8 @@ dialog { border: 0; border-radius: 16px; padding: 0; width: min(620px, calc(100%
 dialog::backdrop { background: #20212488; }
 .dialog-card { padding: 22px; }
 .dialog-card.compact { max-width: 560px; }
+.editor-view { min-height: 280px; max-height: 60vh; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.editor-view a { color: #3949ab; text-decoration: underline; }
 .dialog-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
 .dialog-header h2 { margin: 0; font-size: 1.25rem; }
 .dialog-card label:not(:first-of-type) { margin-top: 16px; }

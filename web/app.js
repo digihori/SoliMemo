@@ -8,7 +8,8 @@ const elements = Object.fromEntries([
   "client-id", "client-id-config", "authorize", "revoke", "auth-status", "connection", "sync",
   "sync-indicator", "open-search", "close-search", "clear-search", "header-search", "app-title",
   "open-settings", "settings", "log", "new-body", "create", "create-status", "search",
-  "list-status", "timeline", "editor", "edit-body", "edit-status", "save", "delete",
+  "list-status", "timeline", "editor", "editor-title", "editor-view", "editor-input", "edit-body",
+  "edit-status", "start-edit", "save", "delete",
   "open-trash", "trash-dialog", "close-trash", "close-trash-bottom", "trash-list", "empty-trash",
 ].map((id) => [id.replaceAll("-", "_"), document.querySelector(`#${id}`)]));
 
@@ -297,12 +298,34 @@ function renderTimeline() {
     article.className = "note";
     article.tabIndex = 0;
     const combined = legacyCompatibleBody(item.note);
+    const urls = extractUrls(combined);
+    const preview = removeUrls(combined);
     const body = document.createElement("p");
-    appendLinkifiedText(body, combined.length > 300 ? `${combined.slice(0, 300)}…` : combined);
+    body.textContent = preview.length > 300 ? `${preview.slice(0, 300)}…` : preview;
+    if (!preview) body.hidden = true;
+    const urlRow = document.createElement("div");
+    urlRow.className = "note-url-row";
+    if (urls.length) {
+      const link = document.createElement("a");
+      link.className = "note-url";
+      link.href = urls[0];
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = urls[0];
+      link.addEventListener("click", (event) => event.stopPropagation());
+      urlRow.append(link);
+      if (urls.length > 1) {
+        const more = document.createElement("span");
+        more.textContent = `ほか${urls.length - 1}件`;
+        urlRow.append(more);
+      }
+    } else {
+      urlRow.hidden = true;
+    }
     const time = document.createElement("time");
     time.dateTime = new Date(item.note.updatedAt).toISOString();
     time.textContent = new Date(item.note.updatedAt).toLocaleString("ja-JP");
-    article.append(body, time);
+    article.append(body, urlRow, time);
     article.addEventListener("click", () => openEditor(item));
     article.addEventListener("keydown", (event) => { if (event.key === "Enter") openEditor(item); });
     elements.timeline.append(article);
@@ -326,6 +349,22 @@ function appendLinkifiedText(container, text) {
     cursor = match.index + match[0].length;
   }
   container.append(document.createTextNode(text.slice(cursor)));
+}
+
+function normalizeUrl(value) {
+  return value.replace(/[.,。、)）\]】]+$/, "");
+}
+
+function extractUrls(text) {
+  return [...new Set([...text.matchAll(/https?:\/\/[^\s]+/gi)]
+    .map((match) => normalizeUrl(match[0]))
+    .filter(Boolean))];
+}
+
+function removeUrls(text) {
+  return text.replace(/https?:\/\/[^\s]+/gi, (value) => value.slice(normalizeUrl(value).length))
+    .trim()
+    .replace(/\n{3,}/g, "\n\n");
 }
 
 function renderTrash() {
@@ -486,9 +525,26 @@ async function createNote() {
 
 function openEditor(item) {
   selected = item;
-  elements.edit_body.value = legacyCompatibleBody(item.note);
+  const body = legacyCompatibleBody(item.note);
+  elements.edit_body.value = body;
+  elements.editor_view.replaceChildren();
+  appendLinkifiedText(elements.editor_view, body);
+  elements.editor_title.textContent = "メモ";
+  elements.editor_view.hidden = false;
+  elements.editor_input.hidden = true;
+  elements.start_edit.hidden = false;
+  elements.save.hidden = true;
   setStatus(elements.edit_status, "");
   elements.editor.showModal();
+}
+
+function startEditing() {
+  elements.editor_title.textContent = "メモを編集";
+  elements.editor_view.hidden = true;
+  elements.editor_input.hidden = false;
+  elements.start_edit.hidden = true;
+  elements.save.hidden = false;
+  elements.edit_body.focus();
 }
 
 async function saveSelected(deleted = false, deletionConfirmed = false) {
@@ -583,6 +639,7 @@ elements.clear_search.addEventListener("click", () => {
   renderTimeline();
 });
 elements.save.addEventListener("click", () => saveSelected(false));
+elements.start_edit.addEventListener("click", startEditing);
 elements.delete.addEventListener("click", () => saveSelected(true));
 elements.editor.addEventListener("close", () => { selected = null; });
 
