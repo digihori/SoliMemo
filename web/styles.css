@@ -187,6 +187,16 @@ button.danger { background: #b3261e; }
 .note-url-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-width: 0; }
 .note-url { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .note-url-row span { flex: none; color: #5f6368; font-size: .78rem; }
+.pinned-divider { align-items: center; color: #283593; display: flex; font-size: .82rem; font-weight: 700; gap: 10px; margin: 8px 4px 0; }
+.pinned-divider::after { background: #9fa8da; content: ""; flex: 1; height: 1px; }
+.tag-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.tag-chip { background: #e8eaf6; border-radius: 999px; color: #283593; font-size: .75rem; padding: 3px 8px; }
+.tag-more { color: #5f6368; font-size: .75rem; padding: 3px 2px; }
+.tag-filter-list { display: flex; flex-wrap: wrap; gap: 8px; max-height: 50vh; overflow-y: auto; }
+.tag-filter { padding: 7px 11px; }
+.tag-filter.active { background: #283593; }
+.tag-chip.editable { border: 0; color: #283593; font-weight: 600; }
+.tag-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .trash-list { display: grid; gap: 10px; max-height: 60vh; overflow-y: auto; }
 .trash-note { border: 1px solid #dfe1e5; border-radius: 10px; padding: 12px; }
 .trash-note p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -212,6 +222,7 @@ dialog::backdrop { background: #20212488; }
 .dialog-card { padding: 22px; }
 .dialog-card.compact { max-width: 560px; }
 .editor-view { min-height: 280px; max-height: 60vh; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.editor-view + .tag-list { margin-bottom: 12px; }
 .editor-view a { color: #3949ab; text-decoration: underline; }
 .dialog-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
 .dialog-header h2 { margin: 0; font-size: 1.25rem; }

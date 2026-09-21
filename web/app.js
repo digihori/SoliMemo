@@ -6,11 +6,12 @@ const MARKDOWN_MIME = "text/markdown";
 
 const elements = Object.fromEntries([
   "client-id", "client-id-config", "authorize", "revoke", "auth-status", "connection", "sync",
-  "sync-indicator", "open-search", "close-search", "clear-search", "header-search", "app-title",
+  "sync-indicator", "open-search", "open-tags", "close-search", "clear-search", "header-search", "app-title",
   "open-settings", "settings", "log", "new-body", "create", "create-status", "search",
   "list-status", "timeline", "editor", "editor-title", "editor-view", "editor-input", "edit-body",
-  "edit-status", "start-edit", "save", "delete",
+  "editor-tags", "edit-tags-list", "edit-tag-input", "add-tag", "tag-suggestions", "edit-status", "start-edit", "save", "delete", "toggle-pin",
   "open-trash", "trash-dialog", "close-trash", "close-trash-bottom", "trash-list", "empty-trash",
+  "tags-dialog", "close-tags", "close-tags-bottom", "tag-filter-list", "clear-tag-filter",
 ].map((id) => [id.replaceAll("-", "_"), document.querySelector(`#${id}`)]));
 
 let tokenClient;
@@ -20,6 +21,8 @@ let accessTokenExpiryTimer;
 let pendingAction;
 let notes = [];
 let selected = null;
+let selectedTag = null;
+let editingTags = [];
 let busy = false;
 let busyIndicatorTimer;
 
@@ -58,7 +61,9 @@ function setBusy(value) {
   elements.create.disabled = value || !accessToken || !hasNewNoteContent();
   elements.save.disabled = value;
   elements.delete.disabled = value;
+  elements.toggle_pin.disabled = value;
   elements.open_trash.disabled = value || !accessToken;
+  elements.open_tags.disabled = value || !accessToken;
   elements.empty_trash.disabled = value || !accessToken || !notes.some(({ note }) => note.deletedAt !== null);
 }
 
@@ -79,7 +84,10 @@ function clearAccessToken(message = "Google Drive未接続") {
   elements.save.disabled = true;
   elements.delete.disabled = true;
   elements.open_trash.disabled = true;
+  elements.open_tags.disabled = true;
   elements.empty_trash.disabled = true;
+  selectedTag = null;
+  elements.open_tags.textContent = "#";
 }
 
 function expireAccessToken() {
@@ -150,6 +158,7 @@ function authorize() {
       elements.search.disabled = false;
       elements.open_search.disabled = false;
       elements.open_trash.disabled = false;
+      elements.open_tags.disabled = false;
       log("drive.file権限で認証しました。トークンはメモリにのみ保持します。");
       const action = pendingAction;
       pendingAction = undefined;
@@ -213,6 +222,8 @@ function parseMarkdown(content) {
     createdAt,
     updatedAt,
     deletedAt,
+    pinned: values.pinned === "true",
+    tags: values.tags === undefined ? [] : normalizeTags(JSON.parse(values.tags)),
   };
 }
 
@@ -226,11 +237,18 @@ function serializeMarkdown(note) {
     `createdAt: ${new Date(note.createdAt).toISOString()}`,
     `updatedAt: ${new Date(note.updatedAt).toISOString()}`,
     `deletedAt: ${note.deletedAt === null ? "null" : new Date(note.deletedAt).toISOString()}`,
+    `pinned: ${Boolean(note.pinned)}`,
+    `tags: ${JSON.stringify(normalizeTags(note.tags || []))}`,
     "---",
     "",
     body,
     "",
   ].join("\n");
+}
+
+function normalizeTags(values) {
+  return [...new Set(values.map((value) => String(value).trim())
+    .filter((value) => value && value.length <= 30 && !/[\r\n]/.test(value)))].slice(0, 10);
 }
 
 async function listMarkdownFiles() {
@@ -280,11 +298,14 @@ async function refreshNotes() {
 }
 
 function renderTimeline() {
+  elements.open_tags.textContent = selectedTag ? "#✓" : "#";
+  elements.open_tags.title = selectedTag ? `タグ: ${selectedTag}` : "タグで絞り込み";
   const query = elements.search.value.trim().toLocaleLowerCase("ja-JP");
   const visible = notes
     .filter(({ note }) => note.deletedAt === null)
-    .filter(({ note }) => !query || `${note.title || ""}\n${note.body}`.toLocaleLowerCase("ja-JP").includes(query))
-    .sort((a, b) => a.note.updatedAt - b.note.updatedAt);
+    .filter(({ note }) => !selectedTag || (note.tags || []).includes(selectedTag))
+    .filter(({ note }) => !query || `${note.title || ""}\n${note.body}\n${(note.tags || []).join(" ")}`.toLocaleLowerCase("ja-JP").includes(query))
+    .sort((a, b) => Number(Boolean(a.note.pinned)) - Number(Boolean(b.note.pinned)) || a.note.updatedAt - b.note.updatedAt);
   elements.timeline.replaceChildren();
   if (visible.length === 0) {
     const empty = document.createElement("p");
@@ -293,7 +314,13 @@ function renderTimeline() {
     elements.timeline.append(empty);
     return;
   }
-  for (const item of visible) {
+  for (const [index, item] of visible.entries()) {
+    if (item.note.pinned && (index === 0 || !visible[index - 1].note.pinned)) {
+      const divider = document.createElement("div");
+      divider.className = "pinned-divider";
+      divider.textContent = "📌 ピン留め";
+      elements.timeline.append(divider);
+    }
     const article = document.createElement("article");
     article.className = "note";
     article.tabIndex = 0;
@@ -322,15 +349,40 @@ function renderTimeline() {
     } else {
       urlRow.hidden = true;
     }
+    const tags = renderTagChips(item.note.tags || [], 3);
     const time = document.createElement("time");
     time.dateTime = new Date(item.note.updatedAt).toISOString();
     time.textContent = new Date(item.note.updatedAt).toLocaleString("ja-JP");
-    article.append(body, urlRow, time);
+    article.append(body, urlRow, tags, time);
     article.addEventListener("click", () => openEditor(item));
     article.addEventListener("keydown", (event) => { if (event.key === "Enter") openEditor(item); });
     elements.timeline.append(article);
   }
   if (!query) elements.timeline.scrollTop = elements.timeline.scrollHeight;
+}
+
+function renderTagChips(tags, limit = tags.length) {
+  const container = document.createElement("div");
+  container.className = "tag-list";
+  normalizeTags(tags).slice(0, limit).forEach((tag) => {
+    const chip = document.createElement("span");
+    chip.className = "tag-chip";
+    chip.textContent = `#${tag}`;
+    container.append(chip);
+  });
+  if (tags.length > limit) {
+    const more = document.createElement("span");
+    more.className = "tag-more";
+    more.textContent = `ほか${tags.length - limit}件`;
+    container.append(more);
+  }
+  if (!container.childElementCount) container.hidden = true;
+  return container;
+}
+
+function allTags() {
+  return [...new Set(notes.filter(({ note }) => note.deletedAt === null)
+    .flatMap(({ note }) => normalizeTags(note.tags || [])))].sort((a, b) => a.localeCompare(b, "ja"));
 }
 
 function appendLinkifiedText(container, text) {
@@ -504,7 +556,10 @@ async function createNote() {
   setStatus(elements.create_status, "Driveへ保存しています…");
   try {
     const now = Date.now();
-    const note = { id: crypto.randomUUID(), title: null, body, createdAt: now, updatedAt: now, deletedAt: null };
+    const note = {
+      id: crypto.randomUUID(), title: null, body, createdAt: now, updatedAt: now, deletedAt: null,
+      pinned: false, tags: [],
+    };
     const metadata = await createDriveFile(note);
     notes.push({ metadata, note });
     elements.new_body.value = "";
@@ -529,6 +584,18 @@ function openEditor(item) {
   elements.edit_body.value = body;
   elements.editor_view.replaceChildren();
   appendLinkifiedText(elements.editor_view, body);
+  const editorTagChips = renderTagChips(item.note.tags || []);
+  elements.editor_tags.replaceChildren(...editorTagChips.children);
+  elements.editor_tags.hidden = !elements.editor_tags.childElementCount;
+  editingTags = normalizeTags(item.note.tags || []);
+  elements.edit_tag_input.value = "";
+  renderEditableTags();
+  elements.tag_suggestions.replaceChildren(...allTags().map((tag) => {
+    const option = document.createElement("option");
+    option.value = tag;
+    return option;
+  }));
+  elements.toggle_pin.textContent = item.note.pinned ? "ピン留め解除" : "ピン留め";
   elements.editor_title.textContent = "メモ";
   elements.editor_view.hidden = false;
   elements.editor_input.hidden = true;
@@ -538,19 +605,61 @@ function openEditor(item) {
   elements.editor.showModal();
 }
 
+async function togglePinSelected() {
+  if (!selected) return;
+  setBusy(true);
+  try {
+    const note = { ...selected.note, pinned: !selected.note.pinned };
+    selected.metadata = await updateDriveFile(selected, note);
+    selected.note = note;
+    elements.toggle_pin.textContent = note.pinned ? "ピン留め解除" : "ピン留め";
+    renderTimeline();
+  } catch (error) {
+    window.alert(`ピン留めの更新に失敗しました: ${error.message}`);
+  } finally {
+    setBusy(false);
+  }
+}
+
 function startEditing() {
   elements.editor_title.textContent = "メモを編集";
   elements.editor_view.hidden = true;
+  elements.editor_tags.hidden = true;
   elements.editor_input.hidden = false;
   elements.start_edit.hidden = true;
   elements.save.hidden = false;
   elements.edit_body.focus();
 }
 
+function renderEditableTags() {
+  elements.edit_tags_list.replaceChildren();
+  editingTags.forEach((tag) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "tag-chip editable";
+    button.textContent = `#${tag} ×`;
+    button.addEventListener("click", () => {
+      editingTags = editingTags.filter((value) => value !== tag);
+      renderEditableTags();
+    });
+    elements.edit_tags_list.append(button);
+  });
+  elements.add_tag.disabled = editingTags.length >= 10 || !elements.edit_tag_input.value.trim();
+}
+
+function addEditingTag() {
+  const value = elements.edit_tag_input.value.trim();
+  if (!value || value.length > 30 || /[\r\n]/.test(value) || editingTags.includes(value) || editingTags.length >= 10) return;
+  editingTags.push(value);
+  elements.edit_tag_input.value = "";
+  renderEditableTags();
+}
+
 async function saveSelected(deleted = false, deletionConfirmed = false) {
   if (!selected) return;
   if (deleted && !deletionConfirmed && !window.confirm("このメモを削除しますか？")) return;
   const body = elements.edit_body.value;
+  const tags = normalizeTags(editingTags);
   if (!deleted && !body.trim()) {
     setStatus(elements.edit_status, "本文を入力してください。", "error");
     return;
@@ -565,6 +674,8 @@ async function saveSelected(deleted = false, deletionConfirmed = false) {
       body,
       updatedAt: deleted ? selected.note.updatedAt : now,
       deletedAt: deleted ? now : null,
+      pinned: deleted ? false : selected.note.pinned,
+      tags,
     };
     const metadata = await updateDriveFile(selected, note);
     selected.note = note;
@@ -596,6 +707,38 @@ elements.open_trash.addEventListener("click", () => {
 elements.close_trash.addEventListener("click", () => elements.trash_dialog.close());
 elements.close_trash_bottom.addEventListener("click", () => elements.trash_dialog.close());
 elements.empty_trash.addEventListener("click", emptyTrash);
+function renderTagFilter() {
+  elements.tag_filter_list.replaceChildren();
+  const tags = allTags();
+  if (!tags.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "タグがまだありません。";
+    elements.tag_filter_list.append(empty);
+  } else {
+    tags.forEach((tag) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = tag === selectedTag ? "tag-filter active" : "tag-filter secondary";
+      button.textContent = `#${tag}`;
+      button.addEventListener("click", () => {
+        selectedTag = tag;
+        elements.tags_dialog.close();
+        renderTimeline();
+      });
+      elements.tag_filter_list.append(button);
+    });
+  }
+  elements.clear_tag_filter.disabled = selectedTag === null;
+}
+elements.open_tags.addEventListener("click", () => { renderTagFilter(); elements.tags_dialog.showModal(); });
+elements.close_tags.addEventListener("click", () => elements.tags_dialog.close());
+elements.close_tags_bottom.addEventListener("click", () => elements.tags_dialog.close());
+elements.clear_tag_filter.addEventListener("click", () => {
+  selectedTag = null;
+  elements.tags_dialog.close();
+  renderTimeline();
+});
 function updateCreateButton() {
   elements.create.disabled = busy || !accessToken || !hasNewNoteContent();
 }
@@ -617,6 +760,7 @@ function openSearch() {
   elements.app_title.hidden = true;
   elements.header_search.hidden = false;
   elements.open_search.hidden = true;
+  elements.open_tags.hidden = true;
   elements.sync.hidden = true;
   elements.open_settings.hidden = true;
   elements.search.focus();
@@ -627,6 +771,7 @@ function closeSearch() {
   elements.app_title.hidden = false;
   elements.header_search.hidden = true;
   elements.open_search.hidden = false;
+  elements.open_tags.hidden = false;
   elements.sync.hidden = false;
   elements.open_settings.hidden = false;
   renderTimeline();
@@ -640,6 +785,12 @@ elements.clear_search.addEventListener("click", () => {
 });
 elements.save.addEventListener("click", () => saveSelected(false));
 elements.start_edit.addEventListener("click", startEditing);
+elements.toggle_pin.addEventListener("click", togglePinSelected);
+elements.edit_tag_input.addEventListener("input", renderEditableTags);
+elements.edit_tag_input.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") { event.preventDefault(); addEditingTag(); }
+});
+elements.add_tag.addEventListener("click", addEditingTag);
 elements.delete.addEventListener("click", () => saveSelected(true));
 elements.editor.addEventListener("close", () => { selected = null; });
 

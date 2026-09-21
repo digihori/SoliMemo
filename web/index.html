@@ -8,10 +8,10 @@
   <meta name="description" content="SoliMemoは、メモを自分の端末とGoogle Driveに保存する、自分専用のタイムライン型メモアプリです。">
   <link rel="canonical" href="https://solimemo.digihori.com/">
   <title>SoliMemo</title>
-  <link rel="stylesheet" href="styles.css?v=20">
+  <link rel="stylesheet" href="styles.css?v=21">
   <script src="https://accounts.google.com/gsi/client" async></script>
   <script src="config.js"></script>
-  <script src="app.js?v=20" defer></script>
+  <script src="app.js?v=21" defer></script>
 </head>
 <body>
   <header class="app-bar">
@@ -28,6 +28,7 @@
           <span id="sync-indicator" class="sync-indicator" hidden aria-hidden="true"></span>
         </button>
         <button id="open-search" class="icon-button" disabled title="メモを検索" aria-label="メモを検索">⌕</button>
+        <button id="open-tags" class="icon-button" disabled title="タグで絞り込み" aria-label="タグで絞り込み">#</button>
         <button id="open-settings" class="icon-button" title="接続設定" aria-label="接続設定">⋮</button>
       </div>
     </div>
@@ -99,13 +100,22 @@
         <button value="cancel" class="icon-button dark" aria-label="閉じる">×</button>
       </div>
       <div id="editor-view" class="editor-view"></div>
+      <div id="editor-tags" class="tag-list"></div>
       <div id="editor-input" hidden>
         <label for="edit-body">本文</label>
         <textarea id="edit-body" rows="14"></textarea>
+        <label for="edit-tag-input">タグ（最大10件）</label>
+        <div id="edit-tags-list" class="tag-list editable-tags"></div>
+        <div class="tag-input-row">
+          <input id="edit-tag-input" type="text" maxlength="30" list="tag-suggestions" placeholder="タグ名">
+          <button id="add-tag" type="button" class="secondary">追加</button>
+        </div>
+        <datalist id="tag-suggestions"></datalist>
       </div>
       <p id="edit-status" class="status" role="status"></p>
       <div class="dialog-actions">
         <button id="delete" type="button" class="danger">削除</button>
+        <button id="toggle-pin" type="button" class="secondary">ピン留め</button>
         <span class="spacer"></span>
         <button value="cancel" class="secondary">閉じる</button>
         <button id="start-edit" type="button">編集</button>
@@ -151,6 +161,21 @@
         <button id="empty-trash" type="button" class="danger">ゴミ箱を空にする</button>
         <span class="spacer"></span>
         <button id="close-trash-bottom" type="button" class="secondary">閉じる</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="tags-dialog">
+    <div class="dialog-card compact">
+      <div class="dialog-header">
+        <h2>タグで絞り込み</h2>
+        <button id="close-tags" class="icon-button dark" aria-label="閉じる">×</button>
+      </div>
+      <div id="tag-filter-list" class="tag-filter-list"></div>
+      <div class="dialog-actions">
+        <button id="clear-tag-filter" type="button" class="secondary">絞り込みを解除</button>
+        <span class="spacer"></span>
+        <button id="close-tags-bottom" type="button" class="secondary">閉じる</button>
       </div>
     </div>
   </dialog>
