@@ -257,6 +257,10 @@ function normalizeTags(values) {
     .filter((value) => value && value.length <= 30 && !/[\r\n]/.test(value)))].slice(0, 10);
 }
 
+function nextMetadataUpdatedAt(note) {
+  return Math.max(Date.now(), (note.metadataUpdatedAt ?? note.updatedAt) + 1);
+}
+
 async function listMarkdownFiles() {
   const params = new URLSearchParams({
     q: `mimeType = '${MARKDOWN_MIME}' and trashed = false`,
@@ -637,7 +641,11 @@ async function togglePinSelected() {
   if (!selected) return;
   setBusy(true);
   try {
-    const note = { ...selected.note, pinned: !selected.note.pinned, metadataUpdatedAt: Date.now() };
+    const note = {
+      ...selected.note,
+      pinned: !selected.note.pinned,
+      metadataUpdatedAt: nextMetadataUpdatedAt(selected.note),
+    };
     selected.metadata = await updateDriveFile(selected, note);
     selected.note = note;
     elements.toggle_pin.textContent = note.pinned ? "ピン留め解除" : "ピン留め";
@@ -707,7 +715,9 @@ async function saveSelected(deleted = false, deletionConfirmed = false) {
       deletedAt: deleted ? now : null,
       pinned: deleted ? false : selected.note.pinned,
       tags,
-      metadataUpdatedAt: metadataChanged ? now : (selected.note.metadataUpdatedAt ?? selected.note.updatedAt),
+      metadataUpdatedAt: metadataChanged
+        ? nextMetadataUpdatedAt(selected.note)
+        : (selected.note.metadataUpdatedAt ?? selected.note.updatedAt),
     };
     const metadata = await updateDriveFile(selected, note);
     selected.note = note;
