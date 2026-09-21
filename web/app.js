@@ -3,6 +3,7 @@ const DRIVE_FILES = "https://www.googleapis.com/drive/v3/files";
 const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 const MARKDOWN_MIME = "text/markdown";
+const DRIVE_DOWNLOAD_CONCURRENCY = 6;
 
 const elements = Object.fromEntries([
   "client-id", "client-id-config", "authorize", "revoke", "auth-status", "connection", "sync",
@@ -269,22 +270,43 @@ async function refreshNotes() {
   let errors = 0;
   try {
     const files = await listMarkdownFiles();
-    for (const metadata of files) {
-      try {
-        const content = await driveFetch(`${DRIVE_FILES}/${metadata.id}?alt=media`);
-        loaded.push({ metadata, note: parseMarkdown(content) });
-      } catch (error) {
-        if (error instanceof AuthorizationExpiredError) throw error;
-        errors += 1;
-        log(`${metadata.name}を読めません: ${error.message}`);
+    const cachedById = new Map(notes.map((item) => [item.metadata.id, item]));
+    const results = new Array(files.length);
+    let nextIndex = 0;
+
+    async function loadNext() {
+      while (nextIndex < files.length) {
+        const index = nextIndex++;
+        const metadata = files[index];
+        const cached = cachedById.get(metadata.id);
+        if (cached && String(cached.metadata.version) === String(metadata.version)) {
+          results[index] = { metadata, note: cached.note };
+          continue;
+        }
+        try {
+          const content = await driveFetch(`${DRIVE_FILES}/${metadata.id}?alt=media`);
+          results[index] = { metadata, note: parseMarkdown(content) };
+        } catch (error) {
+          if (error instanceof AuthorizationExpiredError) throw error;
+          errors += 1;
+          log(`${metadata.name}を読めません: ${error.message}`);
+        }
       }
     }
+
+    const workerCount = Math.min(DRIVE_DOWNLOAD_CONCURRENCY, files.length);
+    await Promise.all(Array.from({ length: workerCount }, loadNext));
+    loaded.push(...results.filter(Boolean));
     notes = loaded;
     renderTimeline();
     const activeCount = notes.filter((item) => item.note.deletedAt === null).length;
     setStatus(elements.list_status, `${activeCount}件のメモ${errors ? `（読込エラー ${errors}件）` : ""}`,
       errors ? "error" : "success");
-    log(`${files.length}ファイルを確認しました。`);
+    const downloadedCount = files.filter((metadata) => {
+      const cached = cachedById.get(metadata.id);
+      return !cached || String(cached.metadata.version) !== String(metadata.version);
+    }).length;
+    log(`${files.length}ファイルを確認し、${downloadedCount}ファイルを読み込みました。`);
   } catch (error) {
     if (error instanceof AuthorizationExpiredError) {
       rememberPendingAction(refreshNotes, elements.list_status);
