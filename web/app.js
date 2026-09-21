@@ -212,8 +212,11 @@ function parseMarkdown(content) {
   const bodyStart = lines[closing + 1] === "" ? closing + 2 : closing + 1;
   const createdAt = Date.parse(values.createdAt);
   const updatedAt = Date.parse(values.updatedAt);
+  const metadataUpdatedAt = values.metadataUpdatedAt === undefined
+    ? updatedAt
+    : Date.parse(values.metadataUpdatedAt);
   const deletedAt = values.deletedAt === "null" ? null : Date.parse(values.deletedAt);
-  if ([createdAt, updatedAt, deletedAt].some((value) => value !== null && Number.isNaN(value))) {
+  if ([createdAt, updatedAt, metadataUpdatedAt, deletedAt].some((value) => value !== null && Number.isNaN(value))) {
     throw new Error("日時形式が不正です");
   }
   return {
@@ -225,6 +228,7 @@ function parseMarkdown(content) {
     deletedAt,
     pinned: values.pinned === "true",
     tags: values.tags === undefined ? [] : normalizeTags(JSON.parse(values.tags)),
+    metadataUpdatedAt,
   };
 }
 
@@ -237,6 +241,7 @@ function serializeMarkdown(note) {
     `title: ${note.title ? JSON.stringify(note.title) : "null"}`,
     `createdAt: ${new Date(note.createdAt).toISOString()}`,
     `updatedAt: ${new Date(note.updatedAt).toISOString()}`,
+    `metadataUpdatedAt: ${new Date(note.metadataUpdatedAt ?? note.updatedAt).toISOString()}`,
     `deletedAt: ${note.deletedAt === null ? "null" : new Date(note.deletedAt).toISOString()}`,
     `pinned: ${Boolean(note.pinned)}`,
     `tags: ${JSON.stringify(normalizeTags(note.tags || []))}`,
@@ -581,6 +586,7 @@ async function createNote() {
     const note = {
       id: crypto.randomUUID(), title: null, body, createdAt: now, updatedAt: now, deletedAt: null,
       pinned: false, tags: [],
+      metadataUpdatedAt: now,
     };
     const metadata = await createDriveFile(note);
     notes.push({ metadata, note });
@@ -631,7 +637,7 @@ async function togglePinSelected() {
   if (!selected) return;
   setBusy(true);
   try {
-    const note = { ...selected.note, pinned: !selected.note.pinned };
+    const note = { ...selected.note, pinned: !selected.note.pinned, metadataUpdatedAt: Date.now() };
     selected.metadata = await updateDriveFile(selected, note);
     selected.note = note;
     elements.toggle_pin.textContent = note.pinned ? "ピン留め解除" : "ピン留め";
@@ -690,14 +696,18 @@ async function saveSelected(deleted = false, deletionConfirmed = false) {
   setStatus(elements.edit_status, deleted ? "削除を同期しています…" : "保存しています…");
   try {
     const now = Date.now();
+    const contentChanged = selected.note.title !== null || body !== selected.note.body;
+    const metadataChanged =
+      JSON.stringify(normalizeTags(selected.note.tags || [])) !== JSON.stringify(tags);
     const note = {
       ...selected.note,
       title: null,
       body,
-      updatedAt: deleted ? selected.note.updatedAt : now,
+      updatedAt: deleted || !contentChanged ? selected.note.updatedAt : now,
       deletedAt: deleted ? now : null,
       pinned: deleted ? false : selected.note.pinned,
       tags,
+      metadataUpdatedAt: metadataChanged ? now : (selected.note.metadataUpdatedAt ?? selected.note.updatedAt),
     };
     const metadata = await updateDriveFile(selected, note);
     selected.note = note;
