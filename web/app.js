@@ -317,7 +317,14 @@ async function refreshNotes() {
     const workerCount = Math.min(DRIVE_DOWNLOAD_CONCURRENCY, files.length);
     await Promise.all(Array.from({ length: workerCount }, loadNext));
     loaded.push(...results.filter(Boolean));
-    notes = loaded;
+    const uniqueByNoteId = new Map();
+    loaded.forEach((item) => {
+      const previous = uniqueByNoteId.get(item.note.id);
+      if (!previous || (item.metadata.modifiedTime || "") > (previous.metadata.modifiedTime || "")) {
+        uniqueByNoteId.set(item.note.id, item);
+      }
+    });
+    notes = [...uniqueByNoteId.values()];
     renderTimeline();
     const activeCount = notes.filter((item) => item.note.deletedAt === null).length;
     setStatus(elements.list_status, `${activeCount}件のメモ${errors ? `（読込エラー ${errors}件）` : ""}`,
