@@ -28,6 +28,12 @@ let busy = false;
 let busyIndicatorTimer;
 
 class AuthorizationExpiredError extends Error {}
+class DriveApiError extends Error {
+  constructor(status, body) {
+    super(`Drive API HTTP ${status}: ${body.slice(0, 300)}`);
+    this.status = status;
+  }
+}
 
 const configuredClientId = window.SOLIMEMO_CONFIG?.googleClientId?.trim() || "";
 elements.client_id.value = configuredClientId || localStorage.getItem("solimemo.webClientId") || "";
@@ -119,7 +125,7 @@ async function driveFetch(url, options = {}) {
       expireAccessToken();
       throw new AuthorizationExpiredError("Google Driveへ再接続してください。");
     }
-    throw new Error(`Drive API HTTP ${response.status}: ${body.slice(0, 300)}`);
+    throw new DriveApiError(response.status, body);
   }
   return body;
 }
@@ -269,7 +275,12 @@ async function listMarkdownFiles() {
     fields: "files(id,name,version,modifiedTime)",
     pageSize: "1000",
   });
-  return JSON.parse(await driveFetch(`${DRIVE_FILES}?${params}`)).files || [];
+  const files = JSON.parse(await driveFetch(`${DRIVE_FILES}?${params}`)).files || [];
+  const uniqueByName = new Map();
+  files.forEach((file) => {
+    if (!uniqueByName.has(file.name)) uniqueByName.set(file.name, file);
+  });
+  return [...uniqueByName.values()];
 }
 
 async function refreshNotes() {
@@ -508,7 +519,12 @@ async function purgeNote(item, confirmed = false) {
   if (!confirmed && !window.confirm("このメモを完全に削除しますか？ この操作は取り消せません。")) return;
   setBusy(true);
   try {
-    await driveFetch(`${DRIVE_FILES}/${item.metadata.id}`, { method: "DELETE" });
+    try {
+      await driveFetch(`${DRIVE_FILES}/${item.metadata.id}`, { method: "DELETE" });
+    } catch (error) {
+      if (!(error instanceof DriveApiError) || error.status !== 404) throw error;
+      log(`${item.metadata.name}はDrive上ですでに削除されていました。`);
+    }
     notes = notes.filter((candidate) => candidate !== item);
     renderTrash();
   } catch (error) {
@@ -548,8 +564,27 @@ async function findOrCreateFolder(name, parentId) {
 async function createDriveFile(note) {
   const rootId = await findOrCreateFolder("SoliMemo", "root");
   const notesId = await findOrCreateFolder("notes", rootId);
+  const fileName = `${note.id}.md`;
+  const existingParams = new URLSearchParams({
+    q: `name = '${fileName.replaceAll("'", "\\'")}' and mimeType = '${MARKDOWN_MIME}' and '${notesId}' in parents and trashed = false`,
+    spaces: "drive",
+    orderBy: "modifiedTime desc",
+    pageSize: "1",
+    fields: "files(id,name,version,modifiedTime)",
+  });
+  const existing = (JSON.parse(await driveFetch(`${DRIVE_FILES}?${existingParams}`)).files || [])[0];
+  if (existing) {
+    return JSON.parse(await driveFetch(
+      `${DRIVE_UPLOAD}/${existing.id}?uploadType=media&fields=id,name,version,modifiedTime`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": `${MARKDOWN_MIME}; charset=UTF-8` },
+        body: serializeMarkdown(note),
+      },
+    ));
+  }
   const boundary = `solimemo-${crypto.randomUUID()}`;
-  const metadata = { name: `${note.id}.md`, mimeType: MARKDOWN_MIME, parents: [notesId] };
+  const metadata = { name: fileName, mimeType: MARKDOWN_MIME, parents: [notesId] };
   const body = [
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
     `${JSON.stringify(metadata)}\r\n`,
