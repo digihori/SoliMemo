@@ -9,11 +9,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -59,6 +63,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.digihori.solimemo.R
 import com.digihori.solimemo.data.local.NoteEntity
+import com.digihori.solimemo.data.local.MAX_TAG_LENGTH
+import com.digihori.solimemo.data.local.MAX_TAGS_PER_NOTE
+import com.digihori.solimemo.data.local.tags
 import kotlinx.coroutines.flow.Flow
 import java.text.DateFormat
 import java.util.Date
@@ -73,14 +80,17 @@ fun TimelineContent(
     sharedText: String?,
     onSharedTextConsumed: () -> Unit,
     onOpenNote: (String) -> Unit,
+    returnToNoteId: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val notes by viewModel.notes.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
+    val selectedTag by viewModel.selectedTag.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val density = LocalDensity.current
     val imeBottom = WindowInsets.ime.getBottom(density)
     var draftBody by remember { mutableStateOf("") }
+    var creatingNote by remember { mutableStateOf(false) }
 
     LaunchedEffect(sharedText) {
         sharedText?.takeIf(String::isNotBlank)?.let {
@@ -89,8 +99,11 @@ fun TimelineContent(
         }
     }
 
-    LaunchedEffect(notes.size, query, imeBottom) {
-        if (notes.isNotEmpty()) listState.scrollToItem(notes.lastIndex)
+    LaunchedEffect(notes.size, query, selectedTag, imeBottom, returnToNoteId) {
+        if (notes.isEmpty()) return@LaunchedEffect
+        val returnIndex = returnToNoteId?.let { id -> notes.indexOfFirst { it.id == id } } ?: -1
+        val targetIndex = if (imeBottom == 0 && returnIndex >= 0) returnIndex else notes.lastIndex
+        listState.scrollToItem(targetIndex)
     }
 
     Column(
@@ -98,6 +111,17 @@ fun TimelineContent(
             .fillMaxSize()
             .imePadding(),
     ) {
+        selectedTag?.let { tag ->
+            Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("タグ: $tag", style = MaterialTheme.typography.labelLarge)
+                    TextButton(onClick = { viewModel.setTagFilter(null) }) { Text("解除") }
+                }
+            }
+        }
         Box(modifier = Modifier.weight(1f)) {
             LazyColumn(
                 state = listState,
@@ -108,7 +132,7 @@ fun TimelineContent(
                 if (notes.isEmpty()) {
                     item(key = "empty") {
                         Text(
-                            text = if (query.isBlank()) {
+                            text = if (query.isBlank() && selectedTag == null) {
                                 "まだメモがありません。下の入力欄から最初のメモを投稿できます。"
                             } else {
                                 "一致するメモがありません。"
@@ -118,8 +142,19 @@ fun TimelineContent(
                         )
                     }
                 } else {
-                    items(notes, key = NoteEntity::id) { note ->
-                        NoteCard(note = note, onClick = { onOpenNote(note.id) })
+                    itemsIndexed(notes, key = { _, note -> note.id }) { index, note ->
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (note.isPinned && (index == 0 || !notes[index - 1].isPinned)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text("📌 ピン留め", style = MaterialTheme.typography.labelLarge, color = Primary)
+                                    HorizontalDivider(modifier = Modifier.weight(1f).padding(top = 9.dp))
+                                }
+                            }
+                            NoteCard(note = note, onClick = { onOpenNote(note.id) })
+                        }
                     }
                 }
             }
@@ -159,12 +194,16 @@ fun TimelineContent(
                         )
                         Button(
                             onClick = {
-                                viewModel.createNote("", draftBody) {
-                                    draftBody = ""
+                                if (!creatingNote) {
+                                    creatingNote = true
+                                    viewModel.createNote("", draftBody) { created ->
+                                        if (created) draftBody = ""
+                                        creatingNote = false
+                                    }
                                 }
                             },
                             modifier = Modifier.sizeIn(minHeight = 56.dp),
-                            enabled = draftBody.isNotBlank(),
+                            enabled = draftBody.isNotBlank() && !creatingNote,
                         ) { Text("投稿") }
                     }
                 }
@@ -220,6 +259,7 @@ private fun NoteCard(note: NoteEntity, onClick: () -> Unit) {
                     }
                 }
             }
+            TagChips(note.tags().take(3), remaining = (note.tags().size - 3).coerceAtLeast(0))
             Text(
                 DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
                     .format(Date(note.updatedAtEpochMillis)),
@@ -227,6 +267,23 @@ private fun NoteCard(note: NoteEntity, onClick: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun TagChips(tags: List<String>, remaining: Int = 0) {
+    if (tags.isEmpty() && remaining == 0) return
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        tags.forEach { tag ->
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Text("#$tag", modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall)
+            }
+        }
+        if (remaining > 0) Text("ほか${remaining}件", style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -398,12 +455,16 @@ fun NoteEditorScreen(
     val deleteNoteLabel = stringResource(R.string.delete_note)
     val editNoteLabel = stringResource(R.string.edit_note)
     val finishEditingLabel = stringResource(R.string.finish_editing)
+    val pinNoteLabel = stringResource(R.string.pin_note)
+    val unpinNoteLabel = stringResource(R.string.unpin_note)
     val note by noteFlow.collectAsStateWithLifecycle(initialValue = null)
+    val allTags by viewModel.allTags.collectAsStateWithLifecycle()
     var body by remember(noteId) { mutableStateOf("") }
     var initialized by remember(noteId) { mutableStateOf(false) }
     var dirty by remember(noteId) { mutableStateOf(false) }
     var editing by remember(noteId) { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var showTagEditor by remember { mutableStateOf(false) }
 
     LaunchedEffect(note?.id) {
         if (!initialized) {
@@ -441,6 +502,13 @@ fun NoteEditorScreen(
                     IconButton(onClick = ::saveAndBack) { Text("←") }
                 },
                 actions = {
+                    IconButton(onClick = { note?.let { viewModel.setPinned(it.id, !it.isPinned) } }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_pin_24),
+                            contentDescription = if (note?.isPinned == true) unpinNoteLabel else pinNoteLabel,
+                            tint = if (note?.isPinned == true) Color.White else Color.White.copy(alpha = .6f),
+                        )
+                    }
                     IconButton(
                         onClick = {
                             val shareIntent = Intent(Intent.ACTION_SEND).apply {
@@ -484,6 +552,15 @@ fun NoteEditorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    TagChips(note?.tags().orEmpty())
+                }
+                TextButton(onClick = { showTagEditor = true }) { Text("タグを編集") }
+            }
             if (editing) {
                 OutlinedTextField(
                     value = body,
@@ -517,6 +594,18 @@ fun NoteEditorScreen(
         }
     }
 
+    if (showTagEditor) {
+        TagEditorDialog(
+            initialTags = note?.tags().orEmpty(),
+            allTags = allTags,
+            onDismiss = { showTagEditor = false },
+            onSave = { tags ->
+                viewModel.setTags(noteId, tags)
+                showTagEditor = false
+            },
+        )
+    }
+
     if (showDeleteConfirmation) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmation = false },
@@ -530,4 +619,71 @@ fun NoteEditorScreen(
             },
         )
     }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun TagEditorDialog(
+    initialTags: List<String>,
+    allTags: List<String>,
+    onDismiss: () -> Unit,
+    onSave: (List<String>) -> Unit,
+) {
+    var tags by remember(initialTags) { mutableStateOf(initialTags) }
+    var input by remember { mutableStateOf("") }
+    val normalizedInput = input.trim()
+    val canAdd = normalizedInput.isNotEmpty() &&
+        normalizedInput.length <= MAX_TAG_LENGTH &&
+        normalizedInput !in tags &&
+        tags.size < MAX_TAGS_PER_NOTE
+    val suggestions = allTags.filter { it !in tags && (normalizedInput.isEmpty() || it.contains(normalizedInput, true)) }.take(8)
+
+    AlertDialog(
+        modifier = Modifier.imePadding(),
+        onDismissRequest = onDismiss,
+        title = { Text("タグを編集") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 280.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                TagChips(tags)
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { if ('\n' !in it && '\r' !in it) input = it },
+                    label = { Text("タグ名") },
+                    singleLine = true,
+                    supportingText = { Text("${tags.size}/$MAX_TAGS_PER_NOTE 件") },
+                    trailingIcon = {
+                        TextButton(
+                            onClick = { tags = tags + normalizedInput; input = "" },
+                            enabled = canAdd,
+                        ) { Text("追加") }
+                    },
+                )
+                if (tags.isNotEmpty()) {
+                    Text("追加済み（タップで削除）", style = MaterialTheme.typography.labelSmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        tags.forEach { tag ->
+                            TextButton(onClick = { tags = tags - tag }) { Text("#$tag ×") }
+                        }
+                    }
+                }
+                if (suggestions.isNotEmpty()) {
+                    Text("既存のタグ", style = MaterialTheme.typography.labelSmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        suggestions.forEach { tag ->
+                            TextButton(
+                                onClick = { if (tags.size < MAX_TAGS_PER_NOTE) tags = tags + tag },
+                            ) { Text("#$tag") }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(tags) }) { Text("保存") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+    )
 }

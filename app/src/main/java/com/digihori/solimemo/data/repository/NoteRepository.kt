@@ -7,7 +7,14 @@ import kotlinx.coroutines.flow.asSharedFlow
 import com.digihori.solimemo.data.local.NoteDao
 import com.digihori.solimemo.data.local.NoteEntity
 import com.digihori.solimemo.data.local.SyncState
+import com.digihori.solimemo.data.local.encodeTags
+import com.digihori.solimemo.data.local.normalizeTags
+import com.digihori.solimemo.data.local.tags
 import java.util.UUID
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+private const val DUPLICATE_CREATE_WINDOW_MILLIS = 5_000L
 
 class NoteRepository(
     private val noteDao: NoteDao,
@@ -19,6 +26,7 @@ class NoteRepository(
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     val localChanges = mutableLocalChanges.asSharedFlow()
+    private val createMutex = Mutex()
 
     fun observeNotes(query: String): Flow<List<NoteEntity>> = noteDao.observeSearch(query.trim())
 
@@ -26,13 +34,21 @@ class NoteRepository(
 
     fun observeTrash(): Flow<List<NoteEntity>> = noteDao.observeTrash()
 
+    fun observeTaggableNotes(): Flow<List<NoteEntity>> = noteDao.observeTaggableNotes()
+
     suspend fun hasPendingChanges(): Boolean = noteDao.findPendingSync().isNotEmpty()
 
-    suspend fun create(title: String, body: String): String? {
+    suspend fun create(title: String, body: String): String? = createMutex.withLock {
         val normalizedTitle = title.trim().ifEmpty { null }
         val normalizedBody = body.trim()
-        if (normalizedTitle == null && normalizedBody.isEmpty()) return null
+        if (normalizedTitle == null && normalizedBody.isEmpty()) return@withLock null
         val now = currentTimeMillis()
+        val existing = noteDao.findRecentMatchingNote(
+            normalizedTitle,
+            normalizedBody,
+            now - DUPLICATE_CREATE_WINDOW_MILLIS,
+        )
+        if (existing != null) return@withLock existing.id
         val id = newId()
         noteDao.upsert(
             NoteEntity(
@@ -46,10 +62,11 @@ class NoteRepository(
                 driveFileId = null,
                 driveVersion = null,
                 lastSyncError = null,
+                metadataUpdatedAtEpochMillis = now,
             ),
         )
         mutableLocalChanges.tryEmit(Unit)
-        return id
+        id
     }
 
     suspend fun update(id: String, title: String, body: String) {
@@ -78,12 +95,80 @@ class NoteRepository(
         noteDao.upsert(
             existing.copy(
                 deletedAtEpochMillis = now,
+                isPinned = false,
                 syncState = SyncState.PENDING_DELETE,
                 lastSyncError = null,
             ),
         )
         mutableLocalChanges.tryEmit(Unit)
     }
+
+    suspend fun setPinned(id: String, pinned: Boolean) {
+        val existing = noteDao.findById(id) ?: return
+        if (existing.isPinned == pinned) return
+        noteDao.upsert(
+            existing.copy(
+                isPinned = pinned,
+                metadataUpdatedAtEpochMillis = nextMetadataTimestamp(existing),
+                syncState = if (existing.driveFileId == null) SyncState.LOCAL_ONLY else SyncState.PENDING_UPLOAD,
+                lastSyncError = null,
+            ),
+        )
+        mutableLocalChanges.tryEmit(Unit)
+    }
+
+    suspend fun setTags(id: String, tags: List<String>) {
+        val existing = noteDao.findById(id) ?: return
+        val serialized = encodeTags(normalizeTags(tags))
+        if (existing.tagsSerialized == serialized) return
+        noteDao.upsert(
+            existing.copy(
+                tagsSerialized = serialized,
+                metadataUpdatedAtEpochMillis = nextMetadataTimestamp(existing),
+                syncState = if (existing.driveFileId == null) SyncState.LOCAL_ONLY else SyncState.PENDING_UPLOAD,
+                lastSyncError = null,
+            ),
+        )
+        mutableLocalChanges.tryEmit(Unit)
+    }
+
+    suspend fun renameTag(oldTag: String, newTag: String): Int {
+        val normalizedNewTag = normalizeTags(listOf(newTag)).singleOrNull() ?: return 0
+        if (oldTag == normalizedNewTag) return 0
+        return updateTagAcrossNotes(oldTag) { tags ->
+            tags.map { if (it == oldTag) normalizedNewTag else it }
+        }
+    }
+
+    suspend fun deleteTag(tag: String): Int = updateTagAcrossNotes(tag) { tags ->
+        tags.filterNot { it == tag }
+    }
+
+    private suspend fun updateTagAcrossNotes(
+        targetTag: String,
+        transform: (List<String>) -> List<String>,
+    ): Int {
+        val affected = noteDao.findTaggableNotes().filter { targetTag in it.tags() }
+        val latestExistingTimestamp = affected.maxOfOrNull(NoteEntity::metadataUpdatedAtEpochMillis) ?: 0L
+        val metadataUpdatedAt = maxOf(currentTimeMillis(), latestExistingTimestamp.safelyIncrement())
+        noteDao.upsertAll(
+            affected.map { note ->
+                note.copy(
+                    tagsSerialized = encodeTags(transform(note.tags())),
+                    metadataUpdatedAtEpochMillis = metadataUpdatedAt,
+                    syncState = if (note.driveFileId == null) SyncState.LOCAL_ONLY else SyncState.PENDING_UPLOAD,
+                    lastSyncError = null,
+                )
+            },
+        )
+        if (affected.isNotEmpty()) mutableLocalChanges.tryEmit(Unit)
+        return affected.size
+    }
+
+    private fun nextMetadataTimestamp(note: NoteEntity): Long =
+        maxOf(currentTimeMillis(), note.metadataUpdatedAtEpochMillis.safelyIncrement())
+
+    private fun Long.safelyIncrement(): Long = if (this == Long.MAX_VALUE) this else this + 1
 
     suspend fun restore(id: String) {
         val existing = noteDao.findById(id) ?: return

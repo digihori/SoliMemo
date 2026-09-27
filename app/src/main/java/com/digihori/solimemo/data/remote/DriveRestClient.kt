@@ -39,12 +39,17 @@ class DriveRestClient(private val accessToken: String) : DriveDataSource {
     override fun createNoteFile(noteId: String, content: String): DriveFileMetadata {
         val rootFolderId = findOrCreateFolder("SoliMemo", "root")
         val notesFolderId = findOrCreateFolder("notes", rootFolderId)
-        return createMarkdownFile("$noteId.md", notesFolderId, content).toDriveMetadata()
+        val fileName = "$noteId.md"
+        val existing = findMarkdownFile(fileName, notesFolderId)
+        return if (existing != null) {
+            updateFile(existing.id, content).toDriveMetadata()
+        } else {
+            createMarkdownFile(fileName, notesFolderId, content).toDriveMetadata()
+        }
     }
 
     override fun updateNoteFile(fileId: String, content: String): DriveFileMetadata {
-        updateFile(fileId, content)
-        return getFileMetadata(fileId)
+        return updateFile(fileId, content).toDriveMetadata()
     }
 
     override fun downloadNoteFile(metadata: DriveFileMetadata): DriveDownloadedFile =
@@ -54,7 +59,11 @@ class DriveRestClient(private val accessToken: String) : DriveDataSource {
         getMetadata(fileId).toDriveMetadata()
 
     override fun deleteNoteFile(fileId: String) {
-        request("DELETE", "$FILES_ENDPOINT/$fileId")
+        try {
+            request("DELETE", "$FILES_ENDPOINT/$fileId")
+        } catch (error: IOException) {
+            if (!error.message.orEmpty().startsWith("Drive API HTTP 404:")) throw error
+        }
     }
 
     fun runProofOfConcept(onStep: (String) -> Unit): FileMetadata {
@@ -113,6 +122,21 @@ class DriveRestClient(private val accessToken: String) : DriveDataSource {
         ).getString("id")
     }
 
+    private fun findMarkdownFile(name: String, parentId: String): FileMetadata? {
+        val escapedName = name.replace("'", "\\'")
+        val query = "name = '$escapedName' and mimeType = '$MARKDOWN_MIME_TYPE' " +
+            "and '$parentId' in parents and trashed = false"
+        val encodedQuery = java.net.URLEncoder.encode(query, StandardCharsets.UTF_8.name())
+        val files = JSONObject(
+            request(
+                "GET",
+                "$FILES_ENDPOINT?q=$encodedQuery&spaces=drive&orderBy=modifiedTime%20desc" +
+                    "&pageSize=1&fields=files(id,name,version,modifiedTime)",
+            ),
+        ).getJSONArray("files")
+        return if (files.length() == 0) null else parseMetadata(files.getJSONObject(0).toString())
+    }
+
     private fun createMarkdownFile(name: String, parentId: String, body: String): FileMetadata {
         val boundary = "solimemo-${UUID.randomUUID()}"
         val metadata = JSONObject()
@@ -141,14 +165,14 @@ class DriveRestClient(private val accessToken: String) : DriveDataSource {
     private fun downloadFile(fileId: String): String =
         request("GET", "$FILES_ENDPOINT/$fileId?alt=media")
 
-    private fun updateFile(fileId: String, body: String) {
+    private fun updateFile(fileId: String, body: String): FileMetadata = parseMetadata(
         request(
             "PATCH",
-            "$UPLOAD_ENDPOINT/$fileId?uploadType=media&fields=id,version,modifiedTime",
+            "$UPLOAD_ENDPOINT/$fileId?uploadType=media&fields=id,name,version,modifiedTime",
             "$MARKDOWN_MIME_TYPE; charset=UTF-8",
             body,
-        )
-    }
+        ),
+    )
 
     private fun getMetadata(fileId: String): FileMetadata = parseMetadata(
         request("GET", "$FILES_ENDPOINT/$fileId?fields=id,name,version,modifiedTime"),

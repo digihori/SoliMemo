@@ -23,5 +23,7 @@ data class NoteEntity(
     val driveFileId: String?,
     val driveVersion: String?,
     val lastSyncError: String?,
+    val isPinned: Boolean = false,
+    val tagsSerialized: String = "",
+    val metadataUpdatedAtEpochMillis: Long = updatedAtEpochMillis,
 )
-

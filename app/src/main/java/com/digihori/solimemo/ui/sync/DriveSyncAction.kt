@@ -25,6 +25,7 @@ import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -69,13 +70,12 @@ fun DriveSyncAction(
         }
         onStatusChange("Drive同期中…")
         scope.launch {
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    application.createSyncEngine(token).synchronize { progress ->
+            try {
+                val summary = withContext(Dispatchers.IO) {
+                    application.synchronize(token) { progress ->
                         scope.launch { onStatusChange(progress) }
                     }
                 }
-            }.onSuccess { summary ->
                 val details = buildList {
                     if (summary.uploaded > 0) add("送信 ${summary.uploaded}件")
                     if (summary.downloaded > 0) add("取得 ${summary.downloaded}件")
@@ -87,7 +87,10 @@ fun DriveSyncAction(
                     if (details.isEmpty()) "Drive同期済み"
                     else "Drive同期完了（${details.joinToString("・")}）",
                 )
-            }.onFailure { error ->
+            } catch (_: CancellationException) {
+                // 画面遷移による中断は失敗ではない。未処理の変更は次回同期で再開する。
+                return@launch
+            } catch (error: Throwable) {
                 onStatusChange("Drive同期失敗: ${error.message ?: error::class.java.simpleName}")
             }
             running = false

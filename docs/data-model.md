@@ -1,6 +1,6 @@
 # データモデル
 
-## Room schema version 1
+## Room schema version 3
 
 `notes`を唯一の主要テーブルとする。
 
@@ -11,11 +11,14 @@
 | `body` | `String` | No | 本文。Version 1ではプレーンテキストとして編集する |
 | `createdAtEpochMillis` | `Long` | No | 作成日時（UTC Unix epoch milliseconds） |
 | `updatedAtEpochMillis` | `Long` | No | 内容を最後に変更した日時 |
+| `metadataUpdatedAtEpochMillis` | `Long` | No | ピン留め・タグを最後に変更した日時 |
 | `deletedAtEpochMillis` | `Long?` | Yes | 論理削除日時。非NULLなら通常一覧から除外する |
 | `syncState` | `SyncState` | No | 同期状態 |
 | `driveFileId` | `String?` | Yes | DriveのファイルID。Drive未作成ならNULL |
 | `driveVersion` | `String?` | Yes | 競合検出に使うDrive側バージョン識別子 |
 | `lastSyncError` | `String?` | Yes | ユーザー秘密を含まない診断用エラー分類 |
+| `isPinned` | `Boolean` | No | ピン留め状態 |
+| `tagsSerialized` | `String` | No | 改行区切りで保存するタグ |
 
 ## 不変条件
 
@@ -23,6 +26,9 @@
 - `createdAtEpochMillis <= updatedAtEpochMillis`とする。
 - タイトルと本文の両方が空のメモは新規作成しない。
 - 編集では`createdAtEpochMillis`を変更しない。
+- ピン留めとタグの変更では`updatedAtEpochMillis`を変更せず、`metadataUpdatedAtEpochMillis`を更新する。
+- 旧データの`metadataUpdatedAtEpochMillis`は`updatedAtEpochMillis`で初期化する。
+- タグは1件30文字、メモごとに最大10件とし、前後空白と重複を除去する。
 - 通常の削除は行の物理削除ではなく`deletedAtEpochMillis`を設定して表現する。
 - ゴミ箱への移動では`updatedAtEpochMillis`を変更せず、本文を最後に更新した日時を維持する。
 - ゴミ箱からの完全削除では、Drive削除の完了後に行を物理削除する。

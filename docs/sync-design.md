@@ -60,6 +60,10 @@ Version 1では自動本文マージをしない。競合した両方の内容�
 - 復元は`updatedAt`を変更せず、`deletedAt`だけを`null`へ戻す更新として同期する。
 - 復元は`PENDING_RESTORE`として通常編集と区別し、Drive側の削除更新によるバージョン差を競合とせず復元内容を優先する。
 - 完全削除はDriveファイルの削除に成功した後でRoomの行を削除する。失敗時は`PENDING_PURGE`を保持して再試行する。
+- ピン留めとタグはMarkdown front matterの`pinned`と`tags`として同期する。旧ファイルで省略されている場合は`false`と空配列を使用する。
+- 本文の更新判定には`updatedAt`、ピン留め・タグの更新判定には`metadataUpdatedAt`を使用する。
+- `metadataUpdatedAt`がない旧ファイルは`updatedAt`をメタデータ更新日時として扱う。
+- 本文と削除状態が同じでメタデータだけが異なる場合は、`metadataUpdatedAt`が新しい側を採用し、競合コピーを作らない。
 - `SYNC_ERROR`は次回同期時の再試行対象にする。
 
 ## 今後決める事項

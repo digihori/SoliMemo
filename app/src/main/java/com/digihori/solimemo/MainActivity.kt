@@ -1,5 +1,6 @@
 package com.digihori.solimemo
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.webkit.WebView
@@ -9,19 +10,28 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
@@ -40,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -54,6 +65,7 @@ import com.digihori.solimemo.ui.notes.NotesViewModel
 import com.digihori.solimemo.ui.notes.TimelineContent
 import com.digihori.solimemo.ui.notes.TrashScreen
 import com.digihori.solimemo.ui.sync.DriveSyncAction
+import com.digihori.solimemo.data.local.MAX_TAG_LENGTH
 import java.net.URL
 
 class MainActivity : ComponentActivity() {
@@ -94,6 +106,9 @@ private enum class Screen {
 }
 
 private val SoliMemoPrimary = Color(0xFF3949AB)
+private const val SEARCH_HISTORY_PREFERENCES = "search_history"
+private const val SEARCH_HISTORY_KEY = "queries"
+private const val SEARCH_HISTORY_LIMIT = 10
 
 @Composable
 fun SoliMemoApp(
@@ -124,6 +139,7 @@ fun SoliMemoApp(
                         screen = Screen.NOTE_EDITOR
                     },
                     onNavigate = { screen = it },
+                    returnToNoteId = selectedNoteId,
                     sharedText = sharedText,
                     onSharedTextConsumed = onSharedTextConsumed,
                 )
@@ -164,19 +180,40 @@ private fun HomeScreen(
     onSyncStatusChange: (String) -> Unit,
     onOpenNote: (String) -> Unit,
     onNavigate: (Screen) -> Unit,
+    returnToNoteId: String?,
     sharedText: String?,
     onSharedTextConsumed: () -> Unit,
 ) {
+    val context = LocalContext.current
     var menuExpanded by remember { mutableStateOf(false) }
     var searchMode by remember { mutableStateOf(false) }
+    var showTagFilter by remember { mutableStateOf(false) }
+    var showTagManagement by remember { mutableStateOf(false) }
+    var renameTag by remember { mutableStateOf<String?>(null) }
+    var renameTagValue by remember { mutableStateOf("") }
+    var deleteTag by remember { mutableStateOf<String?>(null) }
+    var searchHistory by remember { mutableStateOf(loadSearchHistory(context)) }
     val searchFocusRequester = remember { FocusRequester() }
     val query by viewModel.query.collectAsStateWithLifecycle()
+    val allTags by viewModel.allTags.collectAsStateWithLifecycle()
+    val managedTags by viewModel.managedTags.collectAsStateWithLifecycle()
+    val tagUsageCounts by viewModel.tagUsageCounts.collectAsStateWithLifecycle()
+    val selectedTag by viewModel.selectedTag.collectAsStateWithLifecycle()
 
     LaunchedEffect(searchMode) {
         if (searchMode) searchFocusRequester.requestFocus()
     }
 
+    fun recordSearchQuery() {
+        val normalized = query.trim()
+        if (normalized.isEmpty()) return
+        searchHistory = (listOf(normalized) + searchHistory.filterNot { it == normalized })
+            .take(SEARCH_HISTORY_LIMIT)
+        saveSearchHistory(context, searchHistory)
+    }
+
     fun closeSearch() {
+        recordSearchQuery()
         searchMode = false
         viewModel.setQuery("")
     }
@@ -195,6 +232,8 @@ private fun HomeScreen(
                                 .focusRequester(searchFocusRequester),
                             placeholder = { Text("メモを検索", color = Color.White.copy(alpha = .75f)) },
                             singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = { recordSearchQuery() }),
                             colors = TextFieldDefaults.colors(
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
@@ -244,6 +283,13 @@ private fun HomeScreen(
                                 onDismissRequest = { menuExpanded = false },
                             ) {
                                 DropdownMenuItem(
+                                    text = { Text("タグ${selectedTag?.let { ": $it" }.orEmpty()}") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        showTagFilter = true
+                                    },
+                                )
+                                DropdownMenuItem(
                                     text = { Text(stringResource(R.string.trash)) },
                                     onClick = {
                                         menuExpanded = false
@@ -278,16 +324,193 @@ private fun HomeScreen(
             )
         },
     ) { contentPadding ->
-        TimelineContent(
-            viewModel = viewModel,
-            syncStatus = syncStatus,
-            composerVisible = !searchMode,
-            sharedText = sharedText,
-            onSharedTextConsumed = onSharedTextConsumed,
-            onOpenNote = onOpenNote,
-            modifier = Modifier.padding(contentPadding),
+        Box(modifier = Modifier.padding(contentPadding)) {
+            TimelineContent(
+                viewModel = viewModel,
+                syncStatus = syncStatus,
+                composerVisible = !searchMode,
+                sharedText = sharedText,
+                onSharedTextConsumed = onSharedTextConsumed,
+                onOpenNote = onOpenNote,
+                returnToNoteId = returnToNoteId,
+            )
+            if (searchMode && query.isBlank() && searchHistory.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    tonalElevation = 6.dp,
+                    shadowElevation = 4.dp,
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 360.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 8.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("検索履歴", style = MaterialTheme.typography.titleSmall)
+                            TextButton(onClick = {
+                                searchHistory = emptyList()
+                                saveSearchHistory(context, searchHistory)
+                            }) { Text("すべて削除") }
+                        }
+                        searchHistory.forEach { pastQuery ->
+                            TextButton(
+                                onClick = { viewModel.setQuery(pastQuery) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    text = pastQuery,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Start,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showTagFilter) {
+        AlertDialog(
+            onDismissRequest = { showTagFilter = false },
+            title = { Text("タグで絞り込み") },
+            text = {
+                Column(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    if (allTags.isEmpty()) {
+                        Text("タグがまだありません。")
+                    } else {
+                        allTags.forEach { tag ->
+                            TextButton(
+                                onClick = {
+                                    viewModel.setTagFilter(tag)
+                                    showTagFilter = false
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("#$tag") }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row {
+                    if (managedTags.isNotEmpty()) {
+                        TextButton(onClick = {
+                            showTagFilter = false
+                            showTagManagement = true
+                        }) { Text("タグを管理") }
+                    }
+                    if (selectedTag != null) {
+                        TextButton(onClick = { viewModel.setTagFilter(null); showTagFilter = false }) {
+                            Text("絞り込みを解除")
+                        }
+                    }
+                }
+            },
+            dismissButton = { TextButton(onClick = { showTagFilter = false }) { Text("閉じる") } },
         )
     }
+
+    if (showTagManagement) {
+        AlertDialog(
+            onDismissRequest = { showTagManagement = false },
+            title = { Text("タグを管理") },
+            text = {
+                Column(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    if (managedTags.isEmpty()) {
+                        Text("タグがまだありません。")
+                    } else {
+                        managedTags.forEach { tag ->
+                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                                Text("#$tag（${tagUsageCounts[tag] ?: 0}件）")
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TextButton(onClick = {
+                                        renameTag = tag
+                                        renameTagValue = tag
+                                    }) { Text("名前変更") }
+                                    TextButton(onClick = { deleteTag = tag }) { Text("削除") }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showTagManagement = false }) { Text("閉じる") } },
+        )
+    }
+
+    renameTag?.let { oldTag ->
+        val normalized = renameTagValue.trim()
+        val canRename = normalized.isNotEmpty() &&
+            normalized.length <= MAX_TAG_LENGTH &&
+            '\n' !in normalized && '\r' !in normalized &&
+            normalized != oldTag
+        AlertDialog(
+            onDismissRequest = { renameTag = null },
+            title = { Text("タグ名を変更") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("「#$oldTag」を使用している${tagUsageCounts[oldTag] ?: 0}件のメモを変更します。")
+                    OutlinedTextField(
+                        value = renameTagValue,
+                        onValueChange = { if (it.length <= MAX_TAG_LENGTH) renameTagValue = it },
+                        label = { Text("タグ名") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = canRename,
+                    onClick = {
+                        viewModel.renameTag(oldTag, normalized)
+                        renameTag = null
+                    },
+                ) { Text("変更") }
+            },
+            dismissButton = { TextButton(onClick = { renameTag = null }) { Text("キャンセル") } },
+        )
+    }
+
+    deleteTag?.let { tag ->
+        AlertDialog(
+            onDismissRequest = { deleteTag = null },
+            title = { Text("タグを削除") },
+            text = { Text("「#$tag」を${tagUsageCounts[tag] ?: 0}件のメモから削除します。メモ本体は削除されません。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteTag(tag)
+                    deleteTag = null
+                }) { Text("削除") }
+            },
+            dismissButton = { TextButton(onClick = { deleteTag = null }) { Text("キャンセル") } },
+        )
+    }
+}
+
+private fun loadSearchHistory(context: Context): List<String> =
+    context.getSharedPreferences(SEARCH_HISTORY_PREFERENCES, Context.MODE_PRIVATE)
+        .getString(SEARCH_HISTORY_KEY, null)
+        ?.split('\u001F')
+        ?.filter(String::isNotBlank)
+        ?.take(SEARCH_HISTORY_LIMIT)
+        .orEmpty()
+
+private fun saveSearchHistory(context: Context, queries: List<String>) {
+    context.getSharedPreferences(SEARCH_HISTORY_PREFERENCES, Context.MODE_PRIVATE)
+        .edit()
+        .putString(SEARCH_HISTORY_KEY, queries.joinToString("\u001F"))
+        .apply()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

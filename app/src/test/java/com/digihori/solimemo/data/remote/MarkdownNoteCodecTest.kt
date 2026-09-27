@@ -14,6 +14,9 @@ class MarkdownNoteCodecTest {
             createdAtEpochMillis = 1_755_216_000_000L,
             updatedAtEpochMillis = 1_755_216_123_000L,
             deletedAtEpochMillis = null,
+            isPinned = true,
+            tags = listOf("仕事", "釣り: \"予定\""),
+            metadataUpdatedAtEpochMillis = 1_755_216_456_000L,
         )
 
         val decoded = MarkdownNoteCodec.decode(MarkdownNoteCodec.encode(note))
@@ -41,5 +44,8 @@ class MarkdownNoteCodecTest {
 
         assertEquals("abc", decoded.id)
         assertEquals("body", decoded.body)
+        assertEquals(false, decoded.isPinned)
+        assertEquals(emptyList<String>(), decoded.tags)
+        assertEquals(decoded.updatedAtEpochMillis, decoded.metadataUpdatedAtEpochMillis)
     }
 }

@@ -12,13 +12,18 @@ data class MarkdownNote(
     val createdAtEpochMillis: Long,
     val updatedAtEpochMillis: Long,
     val deletedAtEpochMillis: Long?,
+    val isPinned: Boolean = false,
+    val tags: List<String> = emptyList(),
+    val metadataUpdatedAtEpochMillis: Long = updatedAtEpochMillis,
 )
 
 class MarkdownFormatException(message: String) : IllegalArgumentException(message)
 
 object MarkdownNoteCodec {
     private const val SCHEMA_VERSION = 1
-    private val keys = setOf("schemaVersion", "id", "title", "createdAt", "updatedAt", "deletedAt")
+    private val keys = setOf(
+        "schemaVersion", "id", "title", "createdAt", "updatedAt", "metadataUpdatedAt", "deletedAt", "pinned", "tags",
+    )
 
     fun encode(note: MarkdownNote): String = buildString {
         appendLine("---")
@@ -27,7 +32,10 @@ object MarkdownNoteCodec {
         appendLine("title: ${note.title?.let(::quote) ?: "null"}")
         appendLine("createdAt: ${formatTime(note.createdAtEpochMillis)}")
         appendLine("updatedAt: ${formatTime(note.updatedAtEpochMillis)}")
+        appendLine("metadataUpdatedAt: ${formatTime(note.metadataUpdatedAtEpochMillis)}")
         appendLine("deletedAt: ${note.deletedAtEpochMillis?.let(::formatTime) ?: "null"}")
+        appendLine("pinned: ${note.isPinned}")
+        appendLine("tags: ${note.tags.joinToString(prefix = "[", postfix = "]") { quote(it) }}")
         appendLine("---")
         appendLine()
         append(note.body.replace("\r\n", "\n").replace('\r', '\n').trimEnd('\n'))
@@ -51,14 +59,53 @@ object MarkdownNoteCodec {
         if (schema != SCHEMA_VERSION) throw MarkdownFormatException("未対応のschemaVersionです")
         val id = values.required("id")
         val bodyStart = if (lines.getOrNull(closing + 1).orEmpty().isEmpty()) closing + 2 else closing + 1
+        val updatedAt = parseTime(values.required("updatedAt"))
         return MarkdownNote(
             id = id,
             title = parseNullableString(values.required("title")),
             body = lines.drop(bodyStart).joinToString("\n").trimEnd('\n'),
             createdAtEpochMillis = parseTime(values.required("createdAt")),
-            updatedAtEpochMillis = parseTime(values.required("updatedAt")),
+            updatedAtEpochMillis = updatedAt,
             deletedAtEpochMillis = values.required("deletedAt").takeUnless { it == "null" }?.let(::parseTime),
+            isPinned = values["pinned"]?.toBooleanStrictOrNull() ?: false,
+            tags = values["tags"]?.let(::parseStringList) ?: emptyList(),
+            metadataUpdatedAtEpochMillis = values["metadataUpdatedAt"]?.let(::parseTime) ?: updatedAt,
         )
+    }
+
+    private fun parseStringList(value: String): List<String> {
+        if (!value.startsWith('[') || !value.endsWith(']')) {
+            throw MarkdownFormatException("tagsの配列形式が不正です")
+        }
+        val result = mutableListOf<String>()
+        var index = 1
+        while (index < value.lastIndex) {
+            while (index < value.lastIndex && value[index].isWhitespace()) index++
+            if (index == value.lastIndex) break
+            if (value[index] != '"') throw MarkdownFormatException("tagsの要素が不正です")
+            val start = index++
+            var escaped = false
+            while (index < value.length) {
+                val character = value[index++]
+                if (escaped) {
+                    escaped = false
+                } else if (character == '\\') {
+                    escaped = true
+                } else if (character == '"') {
+                    break
+                }
+            }
+            if (index > value.length || value[index - 1] != '"') {
+                throw MarkdownFormatException("tagsの引用形式が不正です")
+            }
+            result += unquote(value.substring(start, index))
+            while (index < value.lastIndex && value[index].isWhitespace()) index++
+            if (index < value.lastIndex) {
+                if (value[index] != ',') throw MarkdownFormatException("tagsの区切りが不正です")
+                index++
+            }
+        }
+        return result
     }
 
     private fun quote(value: String): String = buildString {
